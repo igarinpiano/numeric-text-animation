@@ -1,4 +1,4 @@
-# numeric-text
+# numeric-text-animation
 
 SwiftUI-style per-character slide animation for the web.
 
