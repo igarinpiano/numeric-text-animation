@@ -1,0 +1,35 @@
+{
+  "name": "numeric-text",
+  "version": "0.1.0",
+  "description": "SwiftUI-style per-character slide animation for the web",
+  "type": "module",
+  "main": "./dist/numeric-text.cjs",
+  "module": "./dist/numeric-text.js",
+  "exports": {
+    ".": {
+      "import": "./dist/numeric-text.js",
+      "require": "./dist/numeric-text.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node --watch build.js"
+  },
+  "keywords": [
+    "animation",
+    "number",
+    "transition",
+    "swiftui",
+    "counter",
+    "digit"
+  ],
+  "author": "YOUR_NAME",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
