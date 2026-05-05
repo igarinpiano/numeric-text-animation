@@ -364,4 +364,4 @@ var NumericText = class _NumericText {
   }
 };
 var index_default = NumericText;
-//# sourceMappingURL=numeric-text.cjs.map
+//# sourceMappingURL=numeric-text-animation.cjs.map

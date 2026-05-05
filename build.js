@@ -9,15 +9,15 @@ const shared = {
 
 await Promise.all([
   // ESM (import 用)
-  esbuild.build({ ...shared, format: 'esm', outfile: 'dist/numeric-text.js' }),
+  esbuild.build({ ...shared, format: 'esm', outfile: 'dist/numeric-text-animation.js' }),
   // CJS (require 用)
-  esbuild.build({ ...shared, format: 'cjs', outfile: 'dist/numeric-text.cjs' }),
+  esbuild.build({ ...shared, format: 'cjs', outfile: 'dist/numeric-text-animation.cjs' }),
   // ブラウザ向け minified UMD (CDN / script タグ用)
   esbuild.build({
     ...shared,
     format: 'iife',
     globalName: 'NumericText',
-    outfile: 'dist/numeric-text.min.js',
+    outfile: 'dist/numeric-text-animation.min.js',
     minify: true,
     footer: {
       js: 'if(typeof NumericText!=="undefined")NumericText=NumericText.default||NumericText;'

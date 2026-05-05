@@ -344,4 +344,4 @@ export {
   NumericText,
   index_default as default
 };
-//# sourceMappingURL=numeric-text.js.map
+//# sourceMappingURL=numeric-text-animation.js.map

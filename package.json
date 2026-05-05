@@ -1,14 +1,14 @@
 {
-  "name": "numeric-text",
-  "version": "0.1.0",
+  "name": "numeric-text-animation",
+  "version": "0.1.1",
   "description": "SwiftUI-style per-character slide animation for the web",
   "type": "module",
-  "main": "./dist/numeric-text.cjs",
-  "module": "./dist/numeric-text.js",
+  "main": "./dist/numeric-text-animation.cjs",
+  "module": "./dist/numeric-text-animation.js",
   "exports": {
     ".": {
-      "import": "./dist/numeric-text.js",
-      "require": "./dist/numeric-text.cjs"
+      "import": "./dist/numeric-text-animation.js",
+      "require": "./dist/numeric-text-animation.cjs"
     }
   },
   "files": [
