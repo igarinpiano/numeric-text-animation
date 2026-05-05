@@ -27,8 +27,8 @@
     "counter",
     "digit"
   ],
-  "author": "YOUR_NAME",
-  "license": "MIT",
+  "author": "Igarin",
+  "license": "Apache-2.0",
   "devDependencies": {
     "esbuild": "^0.24.0"
   }
