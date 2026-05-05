@@ -5,7 +5,7 @@ SwiftUI-style per-character slide animation for the web.
 **[Live Demo](https://igarinpiano.github.io/numeric-text-animation/demo/)**
 
 ```
-npm install numeric-text
+npm install numeric-text-animation
 ```
 
 ---
@@ -37,7 +37,7 @@ npm install numeric-text
 ### npm
 
 ```js
-import NumericText from 'numeric-text';
+import NumericText from 'numeric-text-animation';
 
 const nt = new NumericText('#price', {
   type:    'integer',
@@ -111,9 +111,9 @@ npm run build   # → dist/
 
 Outputs:
 
-- `dist/numeric-text.js` — ESM
-- `dist/numeric-text.cjs` — CommonJS
-- `dist/numeric-text.min.js` — IIFE minified (script tag / CDN)
+- `dist/numeric-text-animation.js` — ESM
+- `dist/numeric-text-animation.cjs` — CommonJS
+- `dist/numeric-text-animation.min.js` — IIFE minified (script tag / CDN)
 
 ---
 
