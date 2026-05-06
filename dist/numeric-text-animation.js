@@ -321,22 +321,8 @@ var NumericText = class _NumericText {
     }));
     const maxDelay = Math.max(0, (staggerIdx - 1) * this._stagger);
     setTimeout(() => {
-      for (const s of animSlots) {
-        if (!s.isConnected) continue;
-        const { track, newCh } = s._nt;
-        track.style.animation = track.style.transition = "none";
-        track.style.transform = "";
-        track.innerHTML = "";
-        const face = h("span", "nt-face");
-        face.textContent = newCh;
-        track.appendChild(face);
-        s.style.transition = s.style.width = "";
-      }
-      for (const { slot } of flipList) {
-        if (!slot.isConnected) continue;
-        slot.style.transition = slot.style.transform = "";
-      }
-    }, D + maxDelay + 80);
+      if (this._value === newVal) this._render(newVal);
+    }, D + maxDelay + 100);
   }
 };
 var index_default = NumericText;

@@ -1,10 +1,8 @@
 /**
  * NumericText.js
  * SwiftUI-style per-character slide animation for the web.
- * https://github.com/igarinpiano/numeric-text-animation
- * Copyright 2026 Igarin
- * Licensed under the Apache License, Version 2.0
- * https://www.apache.org/licenses/LICENSE-2.0
+ * https://github.com/YOUR_USERNAME/numeric-text
+ * MIT License
  */
 
 // ── CSS keyframes (injected once) ────────────────────────────────────────────
@@ -86,14 +84,14 @@ function staticSlot(ch) {
 }
 
 function animSlot(oldCh, newCh, up, delay) {
-  const slot = h('span', 'nt-slot');
+  const slot  = h('span', 'nt-slot');
   const track = h('span', 'nt-track');
-  const f1 = h('span', 'nt-face');
-  const f2 = h('span', 'nt-face');
+  const f1    = h('span', 'nt-face');
+  const f2    = h('span', 'nt-face');
   // up: old on top, new on bottom → animate up to reveal new
   // dn: new on top, old on bottom → animate down to reveal new (= start at -50%)
   if (up) { f1.textContent = oldCh; f2.textContent = newCh; }
-  else { f1.textContent = newCh; f2.textContent = oldCh; track.style.transform = 'translateY(-50%)'; }
+  else    { f1.textContent = newCh; f2.textContent = oldCh; track.style.transform = 'translateY(-50%)'; }
   track.appendChild(f1);
   track.appendChild(f2);
   slot.appendChild(track);
@@ -123,15 +121,15 @@ export class NumericText {
       bounce = true, stagger = 40, duration = 400,
       pre = '', suf = '',
     } = options;
-    this._type = type;
+    this._type     = type;
     this._decimals = decimals;
-    this._bounce = bounce;
-    this._stagger = stagger;
+    this._bounce   = bounce;
+    this._stagger  = stagger;
     this._duration = duration;
-    this._pre = pre;
-    this._suf = suf;
-    this._value = null;   // last set value (null = first call)
-    this._slotMap = new Map(); // key → slot element
+    this._pre      = pre;
+    this._suf      = suf;
+    this._value    = null;   // last set value (null = first call)
+    this._slotMap  = new Map(); // key → slot element
     injectStyles();
     // Ensure the container is inline-flex so slots sit side by side
     this._el.style.display = 'inline-flex';
@@ -163,8 +161,8 @@ export class NumericText {
    */
   configure(options = {}) {
     Object.assign(this, {
-      _bounce: options.bounce ?? this._bounce,
-      _stagger: options.stagger ?? this._stagger,
+      _bounce:   options.bounce   ?? this._bounce,
+      _stagger:  options.stagger  ?? this._stagger,
       _duration: options.duration ?? this._duration,
     });
   }
@@ -187,13 +185,13 @@ export class NumericText {
     return [...document.querySelectorAll(selector)].map(el => {
       const d = el.dataset;
       const nt = new NumericText(el, {
-        type: d.nt || 'integer',
-        bounce: d.ntBounce !== 'false',
-        stagger: Number(d.ntStagger || 40),
+        type:     d.nt     || 'integer',
+        bounce:   d.ntBounce  !== 'false',
+        stagger:  Number(d.ntStagger  || 40),
         duration: Number(d.ntDuration || 400),
         decimals: Number(d.ntDecimals || 0),
-        pre: d.ntPre || '',
-        suf: d.ntSuf || '',
+        pre:      d.ntPre  || '',
+        suf:      d.ntSuf  || '',
       });
       nt.set(el.textContent.trim());
       return nt;
@@ -262,17 +260,17 @@ export class NumericText {
   }
 
   _animate(newVal, oldVal) {
-    const el = this._el;
-    const D = this._duration;
-    const EASE_H = `cubic-bezier(.4,0,.2,1)`;  // horizontal slides
-    const EASE_V = `cubic-bezier(.34,0,.64,1)`; // vertical ease-only
+    const el       = this._el;
+    const D        = this._duration;
+    const EASE_H   = `cubic-bezier(.4,0,.2,1)`;  // horizontal slides
+    const EASE_V   = `cubic-bezier(.34,0,.64,1)`; // vertical ease-only
 
-    const newFmt = this._format(newVal);
-    const oldFmt = this._format(oldVal);
+    const newFmt   = this._format(newVal);
+    const oldFmt   = this._format(oldVal);
     const newTokens = this._parse(newFmt);
-    const oldMap = new Map(this._parse(oldFmt).map(t => [t.key, t]));
-    const isNum = this._type !== 'string';
-    const globalUp = isNum ? (+newVal > +oldVal) : null;
+    const oldMap    = new Map(this._parse(oldFmt).map(t => [t.key, t]));
+    const isNum     = this._type !== 'string';
+    const globalUp  = isNum ? (+newVal > +oldVal) : null;
 
     // Which characters changed?
     const changed = new Set();
@@ -349,12 +347,12 @@ export class NumericText {
     // Apply inverse transforms instantly (no transition yet)
     for (const { slot, dx } of flipList) {
       slot.style.transition = 'none';
-      slot.style.transform = `translateX(${dx}px)`;
+      slot.style.transform  = `translateX(${dx}px)`;
     }
     // Lock shrink slots to explicit old width
     for (const s of shrinkSlots) {
       s.style.transition = 'none';
-      s.style.width = s._oW + 'px';
+      s.style.width      = s._oW + 'px';
     }
 
     // Force single reflow to commit all instant changes
@@ -365,12 +363,12 @@ export class NumericText {
       // Horizontal slides (FLIP)
       for (const { slot, dx } of flipList) {
         slot.style.transition = `transform ${D}ms ${EASE_H}`;
-        slot.style.transform = 'translateX(0)';
+        slot.style.transform  = 'translateX(0)';
       }
       // Width shrink
       for (const s of shrinkSlots) {
         s.style.transition = `width ${D}ms ${EASE_H}`;
-        s.style.width = s._nW + 'px';
+        s.style.width      = s._nW + 'px';
       }
       // Vertical (bounce or ease)
       for (const s of animSlots) {
@@ -379,30 +377,23 @@ export class NumericText {
           track.style.animation = `${up ? '_nt-up' : '_nt-dn'} ${D}ms linear ${delay}ms both`;
         } else {
           track.style.transition = `transform ${D}ms ${EASE_V} ${delay}ms`;
-          track.style.transform = up ? 'translateY(-50%)' : 'translateY(0)';
+          track.style.transform  = up ? 'translateY(-50%)' : 'translateY(0)';
         }
       }
     }));
 
     // ── Cleanup after all animations finish ─────────────────────────
+    // Using _render instead of per-slot cleanup for two reasons:
+    // 1. Simpler and more robust
+    // 2. Fixes clipping when the browser tab goes to background:
+    //    rAF is paused in background tabs, but setTimeout still fires,
+    //    so the cleanup would run before the animation ever started.
+    //    _render always produces a correct static result regardless of
+    //    animation state.
     const maxDelay = Math.max(0, (staggerIdx - 1) * this._stagger);
     setTimeout(() => {
-      for (const s of animSlots) {
-        if (!s.isConnected) continue;
-        const { track, newCh } = s._nt;
-        track.style.animation = track.style.transition = 'none';
-        track.style.transform = '';
-        track.innerHTML = '';
-        const face = h('span', 'nt-face');
-        face.textContent = newCh;
-        track.appendChild(face);
-        s.style.transition = s.style.width = ''; // release explicit width
-      }
-      for (const { slot } of flipList) {
-        if (!slot.isConnected) continue;
-        slot.style.transition = slot.style.transform = '';
-      }
-    }, D + maxDelay + 80);
+      if (this._value === newVal) this._render(newVal);
+    }, D + maxDelay + 100);
   }
 }
 
