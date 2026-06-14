@@ -30,6 +30,6 @@
   "author": "Igarin",
   "license": "Apache-2.0",
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.28.1"
   }
 }
