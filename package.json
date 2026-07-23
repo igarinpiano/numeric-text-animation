@@ -27,6 +27,14 @@
     "counter",
     "digit"
   ],
+  "homepage": "https://github.com/igarinpiano/numeric-text-animation",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/igarinpiano/numeric-text-animation.git"
+  },
+  "bugs": {
+    "url": "https://github.com/igarinpiano/numeric-text-animation/issues"
+  },
   "author": "Igarin",
   "license": "Apache-2.0",
   "devDependencies": {
