@@ -1,39 +1,69 @@
+# numeric-text-animation を npm に手動公開する。
+#
+# npm の Trusted Publishing（OIDC）を使うのでトークン（NPM_TOKEN 等）は不要。
+# npm は 2025 年以降トークンによる自動公開を非推奨化しており、CI からの公開は
+# OIDC（Trusted Publishing）が推奨。dirlens リポジトリの publish-all.yml と同じ方式。
+#
+# 【初回のみ手動設定が必要】Trusted Publisher は「既に一度 publish 済みのパッケージ」
+# にしか設定できない。numeric-text-animation は既に npm に公開済み（0.1.4）なので、
+# npmjs.com の当パッケージ設定 → Trusted Publishing で以下を登録すれば準備完了:
+#   - Organization or user: igarinpiano
+#   - Repository: numeric-text-animation
+#   - Workflow filename: npm-publish.yml
+#   （Environment は使っていないので空欄でよい）
+#
+# 自動トリガーは無し。GitHub → Actions → このワークフロー → Run workflow の
+# ボタン操作でのみ実行する。公開されるバージョンは package.json の version。
+
 name: Publish to npm
 
-# Publishes the package to npm. Two ways to trigger:
-#   1. Create a GitHub Release (tag like v0.1.5) — publishes automatically.
-#   2. Run "Publish to npm" manually (workflow_dispatch) with a version input.
-#
-# Auth: this uses a token. Add a repository secret named NPM_TOKEN
-# (an npm "Automation" / granular access token with publish rights).
-# `--provenance` + `id-token: write` attaches a signed provenance statement,
-# which npm shows on the package page. If you'd rather use npm's OIDC
-# "trusted publishing" instead of a token, configure it on npmjs.com for
-# this package and drop the NODE_AUTH_TOKEN line below.
-
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. v0.1.5)'
-        required: true
-        type: string
+        description: "確認用バージョン（例: 0.1.5）。package.json の値と一致しないと失敗する。空欄なら確認をスキップ"
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        env:
+          # スクリプトインジェクション対策: 入力値はシェルに直接展開せず env 経由で渡す
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$pkg_version" ]; then
+            echo "::error::package.json の version ($pkg_version) と入力値 ($INPUT_VERSION) が一致しません。先に package.json を更新してください。"
+            exit 1
+          fi
+          echo "version=$pkg_version" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: check-version
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write        # required for npm provenance
+      id-token: write   # OIDC (npm Trusted Publishing) に必要
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing (OIDC) は npm >= 11.5.0 が必要。Node に同梱の npm が
+      # それより古い場合に備えて最新へ更新しておく。
+      - name: Ensure OIDC-capable npm
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -41,16 +71,11 @@ jobs:
       - name: Build dist/
         run: node build.js
 
-      - name: Set version from tag / input
+      - name: Publish to npm (Trusted Publishing / OIDC)
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
-          npm pkg set version="${VERSION#v}"
-
-      - name: Publish to npm
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # setup-node が NODE_AUTH_TOKEN を GITHUB_TOKEN に設定してしまうため、
+          # step の env: では上書きできない。シェルレベルで unset して npm が
+          # OIDC 交換（Trusted Publishing）にフォールバックするようにする。
+          unset NODE_AUTH_TOKEN
+          unset NPM_CONFIG_USERCONFIG
+          npm publish --access public --provenance
