@@ -33,7 +33,7 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: ver
         env:
           # スクリプトインジェクション対策: 入力値はシェルに直接展開せず env 経由で渡す
@@ -53,9 +53,9 @@ jobs:
       contents: read
       id-token: write   # OIDC (npm Trusted Publishing) に必要
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
