@@ -31,7 +31,7 @@ function injectStyles() {
   s.textContent = `
 .nt-slot{display:inline-block;overflow:hidden;height:1em;line-height:1}
 .nt-track{display:flex;flex-direction:column}
-.nt-face{height:1em;display:flex;align-items:center;white-space:pre}
+.nt-face{height:1em;line-height:1em;display:block;white-space:pre}
 @keyframes _nt-up{
   0%  {transform:translateY(0);animation-timing-function:cubic-bezier(.4,0,.55,.9)}
   62% {transform:translateY(-53%);animation-timing-function:cubic-bezier(.3,0,.7,1)}
@@ -47,6 +47,21 @@ function injectStyles() {
   100%{transform:translateY(0)}
 }`;
   document.head.appendChild(s);
+}
+function bounceFrames(up) {
+  return up ? [
+    { offset: 0, transform: "translateY(0)", easing: "cubic-bezier(.4,0,.55,.9)" },
+    { offset: 0.62, transform: "translateY(-53%)", easing: "cubic-bezier(.3,0,.7,1)" },
+    { offset: 0.78, transform: "translateY(-48%)", easing: "cubic-bezier(.3,0,.7,1)" },
+    { offset: 0.91, transform: "translateY(-50.5%)", easing: "ease-out" },
+    { offset: 1, transform: "translateY(-50%)" }
+  ] : [
+    { offset: 0, transform: "translateY(-50%)", easing: "cubic-bezier(.4,0,.55,.9)" },
+    { offset: 0.62, transform: "translateY(3%)", easing: "cubic-bezier(.3,0,.7,1)" },
+    { offset: 0.78, transform: "translateY(-2%)", easing: "cubic-bezier(.3,0,.7,1)" },
+    { offset: 0.91, transform: "translateY(.5%)", easing: "ease-out" },
+    { offset: 1, transform: "translateY(0)" }
+  ];
 }
 function parseNumeric(s) {
   const dotIdx = s.indexOf(".");
@@ -270,7 +285,26 @@ var NumericText = class _NumericText {
       if (changed.has(key)) staggerMap.set(key, staggerIdx++);
     }
     const oldX = /* @__PURE__ */ new Map();
-    for (const [k, slot] of this._slotMap) oldX.set(k, slot.getBoundingClientRect().left);
+    const carryY = /* @__PURE__ */ new Map();
+    for (const [k, slot] of this._slotMap) {
+      oldX.set(k, slot.getBoundingClientRect().left);
+      const nt = slot._nt;
+      if (nt && nt.track && nt.anim && nt.anim.playState === "running") {
+        const cs = getComputedStyle(nt.track).transform;
+        if (cs && cs !== "none") {
+          try {
+            carryY.set(k, new DOMMatrixReadOnly(cs).m42);
+          } catch (_) {
+          }
+        }
+      }
+      if (nt && nt.anim) {
+        try {
+          nt.anim.cancel();
+        } catch (_) {
+        }
+      }
+    }
     const preEl = el.querySelector("[data-nt-pre]") || [...el.children].find((c) => c.textContent === this._pre && !c.classList.contains("nt-slot"));
     const sufEl = [...el.children].find((c) => c.textContent === this._suf && !c.classList.contains("nt-slot"));
     el.innerHTML = "";
@@ -292,6 +326,8 @@ var NumericText = class _NumericText {
         slot = staticSlot(ch);
       } else {
         slot = animSlot(old?.ch ?? "\u2007", ch, up, delay);
+        slot._nt.key = key;
+        if (carryY.has(key)) slot._nt.track.style.transform = `translateY(${carryY.get(key)}px)`;
         animSlots.push(slot);
       }
       el.appendChild(slot);
@@ -334,12 +370,19 @@ var NumericText = class _NumericText {
         s.style.width = s._nW + "px";
       }
       for (const s of animSlots) {
-        const { track, up, delay } = s._nt;
-        if (this._bounce) {
-          track.style.animation = `${up ? "_nt-up" : "_nt-dn"} ${D}ms linear ${delay}ms both`;
+        const { track, up, delay, key } = s._nt;
+        const interrupted = carryY.has(key);
+        if (this._bounce && !interrupted) {
+          s._nt.anim = track.animate(bounceFrames(up), { duration: D, delay, easing: "linear", fill: "both" });
         } else {
-          track.style.transition = `transform ${D}ms ${EASE_V} ${delay}ms`;
-          track.style.transform = up ? "translateY(-50%)" : "translateY(0)";
+          const faceH = s.getBoundingClientRect().height;
+          const startPx = interrupted ? carryY.get(key) : up ? 0 : -faceH;
+          const endPx = up ? -faceH : 0;
+          const dur = interrupted ? Math.max(200, Math.round(D * 0.62)) : D;
+          s._nt.anim = track.animate(
+            [{ transform: `translateY(${startPx}px)` }, { transform: `translateY(${endPx}px)` }],
+            { duration: dur, delay: interrupted ? 0 : delay, easing: EASE_V, fill: "both" }
+          );
         }
       }
     }));

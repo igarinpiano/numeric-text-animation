@@ -1,0 +1,56 @@
+name: Publish to npm
+
+# Publishes the package to npm. Two ways to trigger:
+#   1. Create a GitHub Release (tag like v0.1.5) — publishes automatically.
+#   2. Run "Publish to npm" manually (workflow_dispatch) with a version input.
+#
+# Auth: this uses a token. Add a repository secret named NPM_TOKEN
+# (an npm "Automation" / granular access token with publish rights).
+# `--provenance` + `id-token: write` attaches a signed provenance statement,
+# which npm shows on the package page. If you'd rather use npm's OIDC
+# "trusted publishing" instead of a token, configure it on npmjs.com for
+# this package and drop the NODE_AUTH_TOKEN line below.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. v0.1.5)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write        # required for npm provenance
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build dist/
+        run: node build.js
+
+      - name: Set version from tag / input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+          fi
+          npm pkg set version="${VERSION#v}"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
