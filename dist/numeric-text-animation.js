@@ -95,7 +95,12 @@ var NumericText = class _NumericText {
    * @param {number}  [options.decimals=0]  decimal places (type:'decimal' only)
    * @param {boolean} [options.bounce=true] true: spring bounce / false: ease only
    * @param {number}  [options.stagger=40]  ms delay per changed character (left→right)
-   * @param {number}  [options.duration=400] animation duration in ms
+   * @param {number}  [options.duration=400] base animation duration in ms
+   * @param {boolean} [options.adaptive=true] shorten the duration toward
+   *                                          `minDuration` when values arrive
+   *                                          faster than `duration` (crisper
+   *                                          under rapid updates)
+   * @param {number}  [options.minDuration=200] floor for the adaptive duration
    * @param {number}  [options.blur=0.06]   motion-blur peak as a fraction of the
    *                                         text height (0 disables)
    * @param {boolean} [options.fade=true]   cross-fade opacity between old/new glyph
@@ -111,6 +116,8 @@ var NumericText = class _NumericText {
       bounce = true,
       stagger = 40,
       duration = 400,
+      adaptive = true,
+      minDuration = 200,
       blur = 0.06,
       fade = true,
       pre = "",
@@ -121,11 +128,14 @@ var NumericText = class _NumericText {
     this._bounce = bounce;
     this._stagger = stagger;
     this._duration = duration;
+    this._adaptive = adaptive;
+    this._minDuration = minDuration;
     this._blur = blur;
     this._fade = fade;
     this._pre = pre;
     this._suf = suf;
     this._value = null;
+    this._lastSetTime = 0;
     this._slotMap = /* @__PURE__ */ new Map();
     this._gen = 0;
     injectStyles();
@@ -159,6 +169,8 @@ var NumericText = class _NumericText {
       _bounce: options.bounce ?? this._bounce,
       _stagger: options.stagger ?? this._stagger,
       _duration: options.duration ?? this._duration,
+      _adaptive: options.adaptive ?? this._adaptive,
+      _minDuration: options.minDuration ?? this._minDuration,
       _blur: options.blur ?? this._blur,
       _fade: options.fade ?? this._fade
     });
@@ -170,6 +182,9 @@ var NumericText = class _NumericText {
    *   data-nt="integer|decimal|string"
    *   data-nt-bounce="true|false"
    *   data-nt-stagger="40"
+   *   data-nt-duration="400"
+   *   data-nt-adaptive="true|false"
+   *   data-nt-min-duration="200"
    *   data-nt-blur="0.06"
    *   data-nt-fade="true|false"
    *   data-nt-pre="¥"
@@ -186,6 +201,8 @@ var NumericText = class _NumericText {
         bounce: d.ntBounce !== "false",
         stagger: Number(d.ntStagger || 40),
         duration: Number(d.ntDuration || 400),
+        adaptive: d.ntAdaptive !== "false",
+        minDuration: Number(d.ntMinDuration || 200),
         blur: d.ntBlur !== void 0 ? Number(d.ntBlur) : 0.06,
         fade: d.ntFade !== "false",
         decimals: Number(d.ntDecimals || 0),
@@ -274,12 +291,17 @@ var NumericText = class _NumericText {
   }
   _animate(newVal, oldVal) {
     const el = this._el;
-    const D = this._duration;
     const EASE_H = "cubic-bezier(.4,0,.2,1)";
     const EASE_V = "cubic-bezier(.34,0,.64,1)";
     const blurR = this._blur;
     const fade = this._fade;
     const gen = ++this._gen;
+    const baseD = this._duration;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const gap = now - this._lastSetTime;
+    this._lastSetTime = now;
+    const D = this._adaptive ? Math.round(Math.max(this._minDuration, Math.min(baseD, gap))) : baseD;
+    const stagger = this._adaptive ? this._stagger * (D / baseD) : this._stagger;
     const newFmt = this._format(newVal);
     const oldFmt = this._format(oldVal);
     const newTokens = this._parse(newFmt);
@@ -294,9 +316,12 @@ var NumericText = class _NumericText {
     }
     const oldX = /* @__PURE__ */ new Map();
     const carryY = /* @__PURE__ */ new Map();
+    const widthNow = /* @__PURE__ */ new Map();
     const settle = /* @__PURE__ */ new Set();
     for (const [k, slot] of this._slotMap) {
-      oldX.set(k, slot.getBoundingClientRect().left);
+      const r = slot.getBoundingClientRect();
+      oldX.set(k, r.left);
+      widthNow.set(k, r.width);
       const nt = slot._nt;
       if (nt && nt.track && nt.anim && nt.anim.playState === "running") {
         const tr = getComputedStyle(nt.track).transform;
@@ -308,8 +333,8 @@ var NumericText = class _NumericText {
         }
         if (!changed.has(k) && newKeys.has(k)) settle.add(k);
       }
-      this._cancelSlot(slot);
     }
+    for (const [, slot] of this._slotMap) this._cancelSlot(slot);
     const animKeys = new Set(changed);
     for (const k of settle) animKeys.add(k);
     let staggerIdx = 0;
@@ -332,7 +357,7 @@ var NumericText = class _NumericText {
         const isSettle = settle.has(key) && !changed.has(key);
         const oldCh = isSettle ? ch : old?.ch ?? "\u2007";
         const up = isSettle ? false : globalUp !== null ? globalUp : ch.codePointAt(0) > (old?.ch.codePointAt(0) ?? 0);
-        const delay = (staggerMap.get(key) || 0) * this._stagger;
+        const delay = (staggerMap.get(key) || 0) * stagger;
         slot = animSlot(oldCh, ch, up, delay);
         slot._nt.key = key;
         slot._nt.settle = isSettle;
@@ -346,15 +371,20 @@ var NumericText = class _NumericText {
     }
     if (this._suf) el.appendChild(sufEl || this._makeSuf());
     for (const s of animSlots) s._nt.oldFace.style.display = "none";
-    for (const s of animSlots) s._nW = s.getBoundingClientRect().width;
-    for (const s of animSlots) s._nt.oldFace.style.display = "";
     for (const s of animSlots) {
       const r = s.getBoundingClientRect();
-      s._oW = r.width;
+      s._nW = r.width;
       s._h = r.height;
     }
-    const shrinkSlots = animSlots.filter((s) => s._oW - s._nW > 0.5);
-    for (const s of shrinkSlots) s.style.width = s._oW + "px";
+    for (const s of animSlots) s._nt.oldFace.style.display = "";
+    for (const s of animSlots) s._nt.newFace.style.display = "none";
+    for (const s of animSlots) s._oW = s.getBoundingClientRect().width;
+    for (const s of animSlots) s._nt.newFace.style.display = "";
+    const widthSlots = animSlots.filter((s) => Math.abs(s._oW - s._nW) > 0.5);
+    for (const s of widthSlots) {
+      s._startW = widthNow.has(s._nt.key) ? widthNow.get(s._nt.key) : s._oW;
+      s.style.width = s._startW + "px";
+    }
     const flipList = [];
     for (const [key, slot] of this._slotMap) {
       if (!oldX.has(key)) continue;
@@ -367,9 +397,9 @@ var NumericText = class _NumericText {
         { duration: D, easing: EASE_H, fill: "both" }
       );
     }
-    for (const s of shrinkSlots) {
+    for (const s of widthSlots) {
       s._widthAnim = s.animate(
-        [{ width: s._oW + "px" }, { width: s._nW + "px" }],
+        [{ width: s._startW + "px" }, { width: s._nW + "px" }],
         { duration: D, easing: EASE_H, fill: "both" }
       );
     }
@@ -383,7 +413,7 @@ var NumericText = class _NumericText {
       let vFrames, vTiming;
       if (nt.interrupted) {
         vFrames = [{ transform: `translateY(${nt.carryY}px)` }, { transform: `translateY(${endPx}px)` }];
-        vTiming = { duration: Math.max(180, Math.round(D * 0.6)), delay: 0, easing: EASE_V, fill: "both" };
+        vTiming = { duration: Math.max(120, Math.round(D * 0.7)), delay: 0, easing: EASE_V, fill: "both" };
       } else if (this._bounce && !nt.settle) {
         vFrames = bounceFrames(up);
         vTiming = { duration: D, delay, easing: "linear", fill: "both" };
@@ -410,7 +440,7 @@ var NumericText = class _NumericText {
         );
       }
     }
-    const maxDelay = Math.max(0, (staggerIdx - 1) * this._stagger);
+    const maxDelay = Math.max(0, (staggerIdx - 1) * stagger);
     setTimeout(() => {
       if (this._gen === gen) this._render(newVal);
     }, D + maxDelay + 120);

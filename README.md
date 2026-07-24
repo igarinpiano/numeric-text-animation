@@ -63,7 +63,9 @@ nt.set(14800);
 | `type` | `'integer'` \| `'decimal'` \| `'string'` | `'integer'` | Value format |
 | `bounce` | `boolean` | `true` | `true` = spring bounce, `false` = ease only |
 | `stagger` | `number` | `40` | ms delay per character (left → right) |
-| `duration` | `number` | `400` | animation duration in ms |
+| `duration` | `number` | `400` | base animation duration in ms |
+| `adaptive` | `boolean` | `true` | shorten the duration toward `minDuration` when values arrive faster than `duration`, so digits keep up crisply during a burst |
+| `minDuration` | `number` | `200` | floor for the adaptive duration |
 | `blur` | `number` | `0.06` | motion-blur peak as a fraction of text height — `0` disables |
 | `fade` | `boolean` | `true` | cross-fade opacity between the old and new glyph |
 | `decimals` | `number` | `0` | decimal places (type `'decimal'` only) |
@@ -73,7 +75,9 @@ nt.set(14800);
 > **Interrupting an animation is safe.** Calling `.set()` again while a previous
 > transition is still running retargets every affected digit from its current
 > position — the slide, blur and cross-fade all continue smoothly. Rapid or
-> chaotic updates never snap.
+> chaotic updates never snap. With `adaptive` on (the default), a fast burst of
+> updates also runs shorter (down to `minDuration`) so the digits stay in step
+> with the incoming values instead of lagging behind.
 
 ### `.set(value)`
 
@@ -99,7 +103,7 @@ Auto-initialise elements via data attributes.
 NumericText.autoInit('[data-nt]');
 ```
 
-Supported attributes: `data-nt`, `data-nt-bounce`, `data-nt-stagger`, `data-nt-duration`, `data-nt-blur`, `data-nt-fade`, `data-nt-decimals`, `data-nt-pre`, `data-nt-suf`.
+Supported attributes: `data-nt`, `data-nt-bounce`, `data-nt-stagger`, `data-nt-duration`, `data-nt-adaptive`, `data-nt-min-duration`, `data-nt-blur`, `data-nt-fade`, `data-nt-decimals`, `data-nt-pre`, `data-nt-suf`.
 
 ### `NumericText.observe(target, options?)`
 
