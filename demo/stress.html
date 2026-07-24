@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NumericText — Stress / Retarget Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    :root { --bg:#0a0a0a; --surface:#141414; --border:#2a2a2a; --text:#f2f2f2; --muted:#888; --accent:#0a84ff }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:40px; }
+    h1 { font-size:22px; font-weight:600; margin-bottom:24px }
+    .row { display:flex; align-items:center; gap:24px; margin-bottom:28px; flex-wrap:wrap }
+    .display { font-size:56px; font-weight:300; line-height:1; font-variant-numeric:tabular-nums; font-family:'SF Mono',ui-monospace,monospace; min-width:260px }
+    .display.prop { font-family:Georgia,serif; font-variant-numeric:proportional-nums }
+    .display.jp { font-family:'Hiragino Sans','Noto Sans JP',sans-serif; font-size:44px }
+    .label { font-size:12px; color:var(--muted); width:120px }
+    button { background:var(--border); color:var(--text); border:none; border-radius:8px; padding:10px 16px; font-size:13px; cursor:pointer }
+    button:hover { background:#333 }
+    button.on { background:var(--accent); color:#fff }
+    .controls { display:flex; gap:10px; margin-bottom:30px; flex-wrap:wrap; align-items:center }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px 24px; margin-bottom:14px }
+  </style>
+</head>
+<body>
+  <h1>Retarget / Interruption stress test</h1>
+  <div class="controls">
+    <button id="mode-bounce" class="on">🌊 Bounce</button>
+    <button id="mode-ease">✦ Ease</button>
+    <span style="color:var(--muted);font-size:13px">|</span>
+    <button id="run-slow">▶ Slow fire (700ms)</button>
+    <button id="run-fast">▶ Fast fire (120ms)</button>
+    <button id="run-chaos">▶ Chaos (random 40–250ms)</button>
+    <button id="stop">■ Stop</button>
+    <button id="single">Single toggle</button>
+  </div>
+
+  <div class="controls" style="margin-bottom:24px">
+    <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">
+      blur <input id="blur" type="range" min="0" max="0.16" step="0.01" value="0.06" style="width:160px">
+      <span id="blur-v" style="width:34px;display:inline-block">0.06</span>
+    </label>
+    <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px">
+      <input id="fade" type="checkbox" checked> opacity cross-fade
+    </label>
+    <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">
+      duration <input id="dur" type="range" min="150" max="800" step="10" value="400" style="width:140px">
+      <span id="dur-v" style="width:44px;display:inline-block">400ms</span>
+    </label>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">integer<br>mono</span>
+      <div class="display" id="d1"></div>
+    </div>
+    <div class="row">
+      <span class="label">integer<br>proportional</span>
+      <div class="display prop" id="d2"></div>
+    </div>
+    <div class="row">
+      <span class="label">decimal π/e</span>
+      <div class="display" id="d3"></div>
+    </div>
+    <div class="row">
+      <span class="label">string (JP)</span>
+      <div class="display jp" id="d4"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Dev-only cache-bust so edits to ../src/index.js are always picked up
+    // (the local static server sends no Cache-Control header).
+    const NumericText = (await import('../src/index.js?v=' + Date.now())).default;
+
+    const cfgs = {
+      1: { el:'#d1', type:'integer', vals:[128, 12580, 9, 4200000, 777] },
+      2: { el:'#d2', type:'integer', pre:'¥', vals:[1111, 8888, 100, 999999, 42] },
+      3: { el:'#d3', type:'decimal', decimals:5, vals:[3.14159, 2.71828, 1.41421, 9.99999, 0.00001] },
+      4: { el:'#d4', type:'string', vals:['東京駅','新宿駅','品川','渋谷スクランブル','上野'] },
+    };
+    const insts = {};
+    for (const k in cfgs) {
+      const c = cfgs[k];
+      insts[k] = new NumericText(c.el, { type:c.type, decimals:c.decimals||0, pre:c.pre||'', bounce:true });
+      insts[k]._idx = 0;
+      insts[k].set(c.vals[0]);
+    }
+
+    let bounce = true;
+    const setBounce = (b) => {
+      bounce = b;
+      document.getElementById('mode-bounce').classList.toggle('on', b);
+      document.getElementById('mode-ease').classList.toggle('on', !b);
+      for (const k in insts) insts[k].configure({ bounce: b });
+    };
+    document.getElementById('mode-bounce').onclick = () => setBounce(true);
+    document.getElementById('mode-ease').onclick = () => setBounce(false);
+
+    const step = (k) => {
+      const c = cfgs[k], nt = insts[k];
+      nt._idx = (nt._idx + 1) % c.vals.length;
+      nt.set(c.vals[nt._idx]);
+    };
+    const stepAll = () => { for (const k in cfgs) step(k); };
+
+    let timer = null;
+    const stop = () => { if (timer) { clearTimeout(timer); clearInterval(timer); timer = null; } };
+    const runFixed = (ms) => { stop(); timer = setInterval(stepAll, ms); };
+    const runChaos = () => {
+      stop();
+      const tick = () => {
+        stepAll();
+        timer = setTimeout(tick, 40 + Math.random() * 210);
+      };
+      tick();
+    };
+    document.getElementById('run-slow').onclick = () => runFixed(700);
+    document.getElementById('run-fast').onclick = () => runFixed(120);
+    document.getElementById('run-chaos').onclick = runChaos;
+    document.getElementById('stop').onclick = stop;
+    document.getElementById('single').onclick = stepAll;
+
+    // live blur / fade / duration tuning
+    const applyOpts = (o) => { for (const k in insts) insts[k].configure(o); };
+    const blur = document.getElementById('blur'), blurV = document.getElementById('blur-v');
+    blur.oninput = () => { blurV.textContent = (+blur.value).toFixed(2); applyOpts({ blur: +blur.value }); };
+    const fade = document.getElementById('fade');
+    fade.onchange = () => applyOpts({ fade: fade.checked });
+    const dur = document.getElementById('dur'), durV = document.getElementById('dur-v');
+    dur.oninput = () => { durV.textContent = dur.value + 'ms'; applyOpts({ duration: +dur.value }); };
+
+    window._insts = insts;
+  </script>
+</body>
+</html>
