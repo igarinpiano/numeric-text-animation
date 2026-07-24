@@ -29,38 +29,32 @@ function injectStyles() {
   const s = document.createElement("style");
   s.id = STYLE_ID;
   s.textContent = `
-.nt-slot{display:inline-block;overflow:hidden;height:1em;line-height:1}
-.nt-track{display:flex;flex-direction:column}
-.nt-face{height:1em;line-height:1em;display:block;white-space:pre}
-@keyframes _nt-up{
-  0%  {transform:translateY(0);animation-timing-function:cubic-bezier(.4,0,.55,.9)}
-  62% {transform:translateY(-53%);animation-timing-function:cubic-bezier(.3,0,.7,1)}
-  78% {transform:translateY(-48%);animation-timing-function:cubic-bezier(.3,0,.7,1)}
-  91% {transform:translateY(-50.5%);animation-timing-function:ease-out}
-  100%{transform:translateY(-50%)}
-}
-@keyframes _nt-dn{
-  0%  {transform:translateY(-50%);animation-timing-function:cubic-bezier(.4,0,.55,.9)}
-  62% {transform:translateY(3%);animation-timing-function:cubic-bezier(.3,0,.7,1)}
-  78% {transform:translateY(-2%);animation-timing-function:cubic-bezier(.3,0,.7,1)}
-  91% {transform:translateY(.5%);animation-timing-function:ease-out}
-  100%{transform:translateY(0)}
-}`;
+.nt-slot{display:inline-block;overflow:hidden;height:1em;line-height:1;will-change:transform,width}
+.nt-track{display:flex;flex-direction:column;will-change:transform,filter}
+.nt-face{height:1em;line-height:1em;display:block;white-space:pre;will-change:opacity}`;
   document.head.appendChild(s);
 }
 function bounceFrames(up) {
   return up ? [
-    { offset: 0, transform: "translateY(0)", easing: "cubic-bezier(.4,0,.55,.9)" },
-    { offset: 0.62, transform: "translateY(-53%)", easing: "cubic-bezier(.3,0,.7,1)" },
-    { offset: 0.78, transform: "translateY(-48%)", easing: "cubic-bezier(.3,0,.7,1)" },
-    { offset: 0.91, transform: "translateY(-50.5%)", easing: "ease-out" },
-    { offset: 1, transform: "translateY(-50%)" }
+    { transform: "translateY(0)", easing: "cubic-bezier(.4,0,.55,.9)" },
+    { transform: "translateY(-53%)", easing: "cubic-bezier(.3,0,.7,1)", offset: 0.62 },
+    { transform: "translateY(-48%)", easing: "cubic-bezier(.3,0,.7,1)", offset: 0.78 },
+    { transform: "translateY(-50.5%)", easing: "ease-out", offset: 0.91 },
+    { transform: "translateY(-50%)" }
   ] : [
-    { offset: 0, transform: "translateY(-50%)", easing: "cubic-bezier(.4,0,.55,.9)" },
-    { offset: 0.62, transform: "translateY(3%)", easing: "cubic-bezier(.3,0,.7,1)" },
-    { offset: 0.78, transform: "translateY(-2%)", easing: "cubic-bezier(.3,0,.7,1)" },
-    { offset: 0.91, transform: "translateY(.5%)", easing: "ease-out" },
-    { offset: 1, transform: "translateY(0)" }
+    { transform: "translateY(-50%)", easing: "cubic-bezier(.4,0,.55,.9)" },
+    { transform: "translateY(3%)", easing: "cubic-bezier(.3,0,.7,1)", offset: 0.62 },
+    { transform: "translateY(-2%)", easing: "cubic-bezier(.3,0,.7,1)", offset: 0.78 },
+    { transform: "translateY(.5%)", easing: "ease-out", offset: 0.91 },
+    { transform: "translateY(0)" }
+  ];
+}
+function blurFrames(peakPx) {
+  return [
+    { filter: "blur(0px)", offset: 0 },
+    { filter: `blur(${peakPx}px)`, offset: 0.3 },
+    { filter: "blur(0px)", offset: 0.62 },
+    { filter: "blur(0px)", offset: 1 }
   ];
 }
 function parseNumeric(s) {
@@ -114,7 +108,7 @@ function animSlot(oldCh, newCh, up, delay) {
   track.appendChild(f1);
   track.appendChild(f2);
   slot.appendChild(track);
-  slot._nt = { track, up, delay, newCh, oldFace: up ? f1 : f2, newFace: up ? f2 : f1 };
+  slot._nt = { track, up, delay, newCh, oldCh, oldFace: up ? f1 : f2, newFace: up ? f2 : f1 };
   return slot;
 }
 var NumericText = class _NumericText {
@@ -126,6 +120,9 @@ var NumericText = class _NumericText {
    * @param {boolean} [options.bounce=true] true: spring bounce / false: ease only
    * @param {number}  [options.stagger=40]  ms delay per changed character (left→right)
    * @param {number}  [options.duration=400] animation duration in ms
+   * @param {number}  [options.blur=0.06]   motion-blur peak as a fraction of the
+   *                                         text height (0 disables)
+   * @param {boolean} [options.fade=true]   cross-fade opacity between old/new glyph
    * @param {string}  [options.pre='']       prefix text (not animated)
    * @param {string}  [options.suf='']       suffix text (not animated)
    */
@@ -138,6 +135,8 @@ var NumericText = class _NumericText {
       bounce = true,
       stagger = 40,
       duration = 400,
+      blur = 0.06,
+      fade = true,
       pre = "",
       suf = ""
     } = options;
@@ -146,10 +145,13 @@ var NumericText = class _NumericText {
     this._bounce = bounce;
     this._stagger = stagger;
     this._duration = duration;
+    this._blur = blur;
+    this._fade = fade;
     this._pre = pre;
     this._suf = suf;
     this._value = null;
     this._slotMap = /* @__PURE__ */ new Map();
+    this._gen = 0;
     injectStyles();
     this._el.style.display = "inline-flex";
     this._el.style.alignItems = "baseline";
@@ -157,7 +159,7 @@ var NumericText = class _NumericText {
   // ── Public API ──────────────────────────────────────────────────────────────
   /**
    * Set a new value. First call sets without animation.
-   * Subsequent calls animate the transition.
+   * Subsequent calls animate the transition (interruptible).
    */
   set(value) {
     const prev = this._value;
@@ -180,7 +182,9 @@ var NumericText = class _NumericText {
     Object.assign(this, {
       _bounce: options.bounce ?? this._bounce,
       _stagger: options.stagger ?? this._stagger,
-      _duration: options.duration ?? this._duration
+      _duration: options.duration ?? this._duration,
+      _blur: options.blur ?? this._blur,
+      _fade: options.fade ?? this._fade
     });
   }
   // ── Static helpers ──────────────────────────────────────────────────────────
@@ -190,6 +194,8 @@ var NumericText = class _NumericText {
    *   data-nt="integer|decimal|string"
    *   data-nt-bounce="true|false"
    *   data-nt-stagger="40"
+   *   data-nt-blur="0.06"
+   *   data-nt-fade="true|false"
    *   data-nt-pre="¥"
    *   data-nt-suf="円"
    *   data-nt-decimals="2"
@@ -204,6 +210,8 @@ var NumericText = class _NumericText {
         bounce: d.ntBounce !== "false",
         stagger: Number(d.ntStagger || 40),
         duration: Number(d.ntDuration || 400),
+        blur: d.ntBlur !== void 0 ? Number(d.ntBlur) : 0.06,
+        fade: d.ntFade !== "false",
         decimals: Number(d.ntDecimals || 0),
         pre: d.ntPre || "",
         suf: d.ntSuf || ""
@@ -241,36 +249,65 @@ var NumericText = class _NumericText {
   _parse(s) {
     return this._type === "string" ? parseString(s) : parseNumeric(s);
   }
+  /** Cancel every WAAPI handle attached to a slot (idempotent). */
+  _cancelSlot(slot) {
+    const kill = (a) => {
+      if (a) {
+        try {
+          a.cancel();
+        } catch (_) {
+        }
+      }
+    };
+    kill(slot._flipAnim);
+    kill(slot._widthAnim);
+    const nt = slot._nt;
+    if (nt) {
+      kill(nt.anim);
+      kill(nt.blurAnim);
+      kill(nt.oldFaceAnim);
+      kill(nt.newFaceAnim);
+    }
+  }
+  _makePre() {
+    const span = h("span");
+    span.dataset.ntFix = "pre";
+    Object.assign(span.style, { fontSize: ".42em", alignSelf: "flex-start", paddingTop: ".17em", marginRight: "1px", opacity: ".6" });
+    span.textContent = this._pre;
+    return span;
+  }
+  _makeSuf() {
+    const span = h("span");
+    span.dataset.ntFix = "suf";
+    Object.assign(span.style, { fontSize: ".38em", alignSelf: "flex-end", paddingBottom: ".1em", marginLeft: "3px", opacity: ".6" });
+    span.textContent = this._suf;
+    return span;
+  }
   _render(value) {
     const el = this._el;
+    for (const [, slot] of this._slotMap) this._cancelSlot(slot);
     el.innerHTML = "";
     this._slotMap.clear();
-    if (this._pre) {
-      const span = h("span");
-      Object.assign(span.style, { fontSize: ".42em", alignSelf: "flex-start", paddingTop: ".17em", marginRight: "1px", opacity: ".6" });
-      span.textContent = this._pre;
-      el.appendChild(span);
-    }
+    if (this._pre) el.appendChild(this._makePre());
     for (const { key, ch } of this._parse(this._format(value))) {
       const slot = staticSlot(ch);
       el.appendChild(slot);
       this._slotMap.set(key, slot);
     }
-    if (this._suf) {
-      const span = h("span");
-      Object.assign(span.style, { fontSize: ".38em", alignSelf: "flex-end", paddingBottom: ".1em", marginLeft: "3px", opacity: ".6" });
-      span.textContent = this._suf;
-      el.appendChild(span);
-    }
+    if (this._suf) el.appendChild(this._makeSuf());
   }
   _animate(newVal, oldVal) {
     const el = this._el;
     const D = this._duration;
-    const EASE_H = `cubic-bezier(.4,0,.2,1)`;
-    const EASE_V = `cubic-bezier(.34,0,.64,1)`;
+    const EASE_H = "cubic-bezier(.4,0,.2,1)";
+    const EASE_V = "cubic-bezier(.34,0,.64,1)";
+    const blurR = this._blur;
+    const fade = this._fade;
+    const gen = ++this._gen;
     const newFmt = this._format(newVal);
     const oldFmt = this._format(oldVal);
     const newTokens = this._parse(newFmt);
+    const newKeys = new Set(newTokens.map((t) => t.key));
     const oldMap = new Map(this._parse(oldFmt).map((t) => [t.key, t]));
     const isNum = this._type !== "string";
     const globalUp = isNum ? +newVal > +oldVal : null;
@@ -279,72 +316,69 @@ var NumericText = class _NumericText {
       const old = oldMap.get(key);
       if (!old || old.ch !== ch) changed.add(key);
     }
+    const oldX = /* @__PURE__ */ new Map();
+    const carryY = /* @__PURE__ */ new Map();
+    const settle = /* @__PURE__ */ new Set();
+    for (const [k, slot] of this._slotMap) {
+      oldX.set(k, slot.getBoundingClientRect().left);
+      const nt = slot._nt;
+      if (nt && nt.track && nt.anim && nt.anim.playState === "running") {
+        const tr = getComputedStyle(nt.track).transform;
+        if (tr && tr !== "none") {
+          try {
+            carryY.set(k, new DOMMatrixReadOnly(tr).m42);
+          } catch (_) {
+          }
+        }
+        if (!changed.has(k) && newKeys.has(k)) settle.add(k);
+      }
+      this._cancelSlot(slot);
+    }
+    const animKeys = new Set(changed);
+    for (const k of settle) animKeys.add(k);
     let staggerIdx = 0;
     const staggerMap = /* @__PURE__ */ new Map();
     for (const { key } of newTokens) {
       if (changed.has(key)) staggerMap.set(key, staggerIdx++);
     }
-    const oldX = /* @__PURE__ */ new Map();
-    const carryY = /* @__PURE__ */ new Map();
-    for (const [k, slot] of this._slotMap) {
-      oldX.set(k, slot.getBoundingClientRect().left);
-      const nt = slot._nt;
-      if (nt && nt.track && nt.anim && nt.anim.playState === "running") {
-        const cs = getComputedStyle(nt.track).transform;
-        if (cs && cs !== "none") {
-          try {
-            carryY.set(k, new DOMMatrixReadOnly(cs).m42);
-          } catch (_) {
-          }
-        }
-      }
-      if (nt && nt.anim) {
-        try {
-          nt.anim.cancel();
-        } catch (_) {
-        }
-      }
-    }
-    const preEl = el.querySelector("[data-nt-pre]") || [...el.children].find((c) => c.textContent === this._pre && !c.classList.contains("nt-slot"));
-    const sufEl = [...el.children].find((c) => c.textContent === this._suf && !c.classList.contains("nt-slot"));
+    const preEl = [...el.children].find((c) => c.dataset && c.dataset.ntFix === "pre");
+    const sufEl = [...el.children].find((c) => c.dataset && c.dataset.ntFix === "suf");
     el.innerHTML = "";
-    if (preEl) el.appendChild(preEl);
-    else if (this._pre) {
-      const span = h("span");
-      Object.assign(span.style, { fontSize: ".42em", alignSelf: "flex-start", paddingTop: ".17em", marginRight: "1px", opacity: ".6" });
-      span.textContent = this._pre;
-      el.appendChild(span);
-    }
+    if (this._pre) el.appendChild(preEl || this._makePre());
     this._slotMap.clear();
     const animSlots = [];
     for (const { key, ch } of newTokens) {
       const old = oldMap.get(key);
-      const delay = (staggerMap.get(key) || 0) * this._stagger;
-      const up = globalUp !== null ? globalUp : ch.codePointAt(0) > (old?.ch.codePointAt(0) ?? 0);
       let slot;
-      if (!changed.has(key)) {
+      if (!animKeys.has(key)) {
         slot = staticSlot(ch);
       } else {
-        slot = animSlot(old?.ch ?? "\u2007", ch, up, delay);
+        const isSettle = settle.has(key) && !changed.has(key);
+        const oldCh = isSettle ? ch : old?.ch ?? "\u2007";
+        const up = isSettle ? false : globalUp !== null ? globalUp : ch.codePointAt(0) > (old?.ch.codePointAt(0) ?? 0);
+        const delay = (staggerMap.get(key) || 0) * this._stagger;
+        slot = animSlot(oldCh, ch, up, delay);
         slot._nt.key = key;
-        if (carryY.has(key)) slot._nt.track.style.transform = `translateY(${carryY.get(key)}px)`;
+        slot._nt.settle = isSettle;
+        slot._nt.interrupted = carryY.has(key);
+        slot._nt.carryY = carryY.get(key);
+        if (slot._nt.interrupted) slot._nt.track.style.transform = `translateY(${slot._nt.carryY}px)`;
         animSlots.push(slot);
       }
       el.appendChild(slot);
       this._slotMap.set(key, slot);
     }
-    if (sufEl) el.appendChild(sufEl);
-    else if (this._suf) {
-      const span = h("span");
-      Object.assign(span.style, { fontSize: ".38em", alignSelf: "flex-end", paddingBottom: ".1em", marginLeft: "3px", opacity: ".6" });
-      span.textContent = this._suf;
-      el.appendChild(span);
-    }
+    if (this._suf) el.appendChild(sufEl || this._makeSuf());
     for (const s of animSlots) s._nt.oldFace.style.display = "none";
     for (const s of animSlots) s._nW = s.getBoundingClientRect().width;
     for (const s of animSlots) s._nt.oldFace.style.display = "";
-    for (const s of animSlots) s._oW = s.getBoundingClientRect().width;
+    for (const s of animSlots) {
+      const r = s.getBoundingClientRect();
+      s._oW = r.width;
+      s._h = r.height;
+    }
     const shrinkSlots = animSlots.filter((s) => s._oW - s._nW > 0.5);
+    for (const s of shrinkSlots) s.style.width = s._oW + "px";
     const flipList = [];
     for (const [key, slot] of this._slotMap) {
       if (!oldX.has(key)) continue;
@@ -352,44 +386,58 @@ var NumericText = class _NumericText {
       if (Math.abs(dx) > 0.5) flipList.push({ slot, dx });
     }
     for (const { slot, dx } of flipList) {
-      slot.style.transition = "none";
-      slot.style.transform = `translateX(${dx}px)`;
+      slot._flipAnim = slot.animate(
+        [{ transform: `translateX(${dx}px)` }, { transform: "translateX(0)" }],
+        { duration: D, easing: EASE_H, fill: "both" }
+      );
     }
     for (const s of shrinkSlots) {
-      s.style.transition = "none";
-      s.style.width = s._oW + "px";
+      s._widthAnim = s.animate(
+        [{ width: s._oW + "px" }, { width: s._nW + "px" }],
+        { duration: D, easing: EASE_H, fill: "both" }
+      );
     }
-    el.getBoundingClientRect();
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      for (const { slot, dx } of flipList) {
-        slot.style.transition = `transform ${D}ms ${EASE_H}`;
-        slot.style.transform = "translateX(0)";
+    for (const s of animSlots) {
+      const nt = s._nt;
+      const { track, up, delay, oldFace, newFace } = nt;
+      const faceH = s._h || 16;
+      const endPx = up ? -faceH : 0;
+      const peakPx = blurR > 0 ? faceH * blurR : 0;
+      const contentChanged = nt.oldCh !== nt.newCh;
+      let vFrames, vTiming;
+      if (nt.interrupted) {
+        vFrames = [{ transform: `translateY(${nt.carryY}px)` }, { transform: `translateY(${endPx}px)` }];
+        vTiming = { duration: Math.max(180, Math.round(D * 0.6)), delay: 0, easing: EASE_V, fill: "both" };
+      } else if (this._bounce && !nt.settle) {
+        vFrames = bounceFrames(up);
+        vTiming = { duration: D, delay, easing: "linear", fill: "both" };
+      } else {
+        const startPx = up ? 0 : -faceH;
+        vFrames = [{ transform: `translateY(${startPx}px)` }, { transform: `translateY(${endPx}px)` }];
+        vTiming = { duration: D, delay, easing: EASE_V, fill: "both" };
       }
-      for (const s of shrinkSlots) {
-        s.style.transition = `width ${D}ms ${EASE_H}`;
-        s.style.width = s._nW + "px";
+      nt.anim = track.animate(vFrames, vTiming);
+      if (contentChanged && peakPx > 0) {
+        nt.blurAnim = track.animate(
+          blurFrames(peakPx),
+          { duration: vTiming.duration, delay: vTiming.delay, easing: "linear", fill: "both" }
+        );
       }
-      for (const s of animSlots) {
-        const { track, up, delay, key } = s._nt;
-        const interrupted = carryY.has(key);
-        if (this._bounce && !interrupted) {
-          s._nt.anim = track.animate(bounceFrames(up), { duration: D, delay, easing: "linear", fill: "both" });
-        } else {
-          const faceH = s.getBoundingClientRect().height;
-          const startPx = interrupted ? carryY.get(key) : up ? 0 : -faceH;
-          const endPx = up ? -faceH : 0;
-          const dur = interrupted ? Math.max(200, Math.round(D * 0.62)) : D;
-          s._nt.anim = track.animate(
-            [{ transform: `translateY(${startPx}px)` }, { transform: `translateY(${endPx}px)` }],
-            { duration: dur, delay: interrupted ? 0 : delay, easing: EASE_V, fill: "both" }
-          );
-        }
+      if (contentChanged && fade) {
+        nt.oldFaceAnim = oldFace.animate(
+          [{ opacity: 1, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 0, offset: 1 }],
+          { duration: vTiming.duration, delay: vTiming.delay, easing: "linear", fill: "both" }
+        );
+        nt.newFaceAnim = newFace.animate(
+          [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.12 }, { opacity: 1, offset: 0.7 }, { opacity: 1, offset: 1 }],
+          { duration: vTiming.duration, delay: vTiming.delay, easing: "linear", fill: "both" }
+        );
       }
-    }));
+    }
     const maxDelay = Math.max(0, (staggerIdx - 1) * this._stagger);
     setTimeout(() => {
-      if (this._value === newVal) this._render(newVal);
-    }, D + maxDelay + 100);
+      if (this._gen === gen) this._render(newVal);
+    }, D + maxDelay + 120);
   }
 };
 var index_default = NumericText;

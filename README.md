@@ -14,6 +14,9 @@ npm install numeric-text-animation
 
 - 🔢 Per-digit animation — only **changed** characters move
 - 🌊 Spring bounce **or** cubic-bezier ease (switchable at runtime)
+- 💨 SwiftUI-style motion **blur** + opacity cross-fade on each changing glyph
+- ⚡ Fully **interruptible** — change the value mid-animation and every digit
+  glides on from where it was, never snapping to the start or the end
 - ↔️ Proportional-font support — static chars slide horizontally via FLIP
 - 📐 Decimal, integer, and arbitrary string support
 - ⚙️ Zero dependencies — ~3 KB gzip
@@ -61,9 +64,16 @@ nt.set(14800);
 | `bounce` | `boolean` | `true` | `true` = spring bounce, `false` = ease only |
 | `stagger` | `number` | `40` | ms delay per character (left → right) |
 | `duration` | `number` | `400` | animation duration in ms |
+| `blur` | `number` | `0.06` | motion-blur peak as a fraction of text height — `0` disables |
+| `fade` | `boolean` | `true` | cross-fade opacity between the old and new glyph |
 | `decimals` | `number` | `0` | decimal places (type `'decimal'` only) |
 | `pre` | `string` | `''` | prefix e.g. `'¥'` (not animated) |
 | `suf` | `string` | `''` | suffix e.g. `'円'` (not animated) |
+
+> **Interrupting an animation is safe.** Calling `.set()` again while a previous
+> transition is still running retargets every affected digit from its current
+> position — the slide, blur and cross-fade all continue smoothly. Rapid or
+> chaotic updates never snap.
 
 ### `.set(value)`
 
@@ -89,7 +99,7 @@ Auto-initialise elements via data attributes.
 NumericText.autoInit('[data-nt]');
 ```
 
-Supported attributes: `data-nt`, `data-nt-bounce`, `data-nt-stagger`, `data-nt-duration`, `data-nt-decimals`, `data-nt-pre`, `data-nt-suf`.
+Supported attributes: `data-nt`, `data-nt-bounce`, `data-nt-stagger`, `data-nt-duration`, `data-nt-blur`, `data-nt-fade`, `data-nt-decimals`, `data-nt-pre`, `data-nt-suf`.
 
 ### `NumericText.observe(target, options?)`
 
