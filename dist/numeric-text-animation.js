@@ -333,8 +333,8 @@ var NumericText = class _NumericText {
         }
         if (!changed.has(k) && newKeys.has(k)) settle.add(k);
       }
-      this._cancelSlot(slot);
     }
+    for (const [, slot] of this._slotMap) this._cancelSlot(slot);
     const animKeys = new Set(changed);
     for (const k of settle) animKeys.add(k);
     let staggerIdx = 0;

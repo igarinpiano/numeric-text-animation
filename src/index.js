@@ -374,6 +374,13 @@ export class NumericText {
     // the interrupted one was — no snap. Slots whose glyph did NOT change but
     // were still mid-slide are queued to keep gliding to rest instead of being
     // cut to a static glyph.
+    //
+    // Measure EVERYTHING first, then cancel. Cancelling a slot's width
+    // animation reverts it to its base width, which reflows every slot to its
+    // right — so measuring and cancelling in one pass corrupts the later slots'
+    // oldX (they get read after their left neighbours have snapped back),
+    // producing a bogus FLIP delta that snaps the spacing on a mid-flight
+    // retarget. Two passes keeps oldX honest.
     const oldX     = new Map();
     const carryY   = new Map();
     const widthNow = new Map(); // live rendered width per key (for symmetric width tween)
@@ -390,8 +397,8 @@ export class NumericText {
         }
         if (!changed.has(k) && newKeys.has(k)) settle.add(k);
       }
-      this._cancelSlot(slot);
     }
+    for (const [, slot] of this._slotMap) this._cancelSlot(slot);
 
     // keys that animate = changed ∪ still-moving-but-unchanged
     const animKeys = new Set(changed);
