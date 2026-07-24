@@ -316,9 +316,12 @@ var NumericText = class _NumericText {
     }
     const oldX = /* @__PURE__ */ new Map();
     const carryY = /* @__PURE__ */ new Map();
+    const widthNow = /* @__PURE__ */ new Map();
     const settle = /* @__PURE__ */ new Set();
     for (const [k, slot] of this._slotMap) {
-      oldX.set(k, slot.getBoundingClientRect().left);
+      const r = slot.getBoundingClientRect();
+      oldX.set(k, r.left);
+      widthNow.set(k, r.width);
       const nt = slot._nt;
       if (nt && nt.track && nt.anim && nt.anim.playState === "running") {
         const tr = getComputedStyle(nt.track).transform;
@@ -368,15 +371,20 @@ var NumericText = class _NumericText {
     }
     if (this._suf) el.appendChild(sufEl || this._makeSuf());
     for (const s of animSlots) s._nt.oldFace.style.display = "none";
-    for (const s of animSlots) s._nW = s.getBoundingClientRect().width;
-    for (const s of animSlots) s._nt.oldFace.style.display = "";
     for (const s of animSlots) {
       const r = s.getBoundingClientRect();
-      s._oW = r.width;
+      s._nW = r.width;
       s._h = r.height;
     }
-    const shrinkSlots = animSlots.filter((s) => s._oW - s._nW > 0.5);
-    for (const s of shrinkSlots) s.style.width = s._oW + "px";
+    for (const s of animSlots) s._nt.oldFace.style.display = "";
+    for (const s of animSlots) s._nt.newFace.style.display = "none";
+    for (const s of animSlots) s._oW = s.getBoundingClientRect().width;
+    for (const s of animSlots) s._nt.newFace.style.display = "";
+    const widthSlots = animSlots.filter((s) => Math.abs(s._oW - s._nW) > 0.5);
+    for (const s of widthSlots) {
+      s._startW = widthNow.has(s._nt.key) ? widthNow.get(s._nt.key) : s._oW;
+      s.style.width = s._startW + "px";
+    }
     const flipList = [];
     for (const [key, slot] of this._slotMap) {
       if (!oldX.has(key)) continue;
@@ -389,9 +397,9 @@ var NumericText = class _NumericText {
         { duration: D, easing: EASE_H, fill: "both" }
       );
     }
-    for (const s of shrinkSlots) {
+    for (const s of widthSlots) {
       s._widthAnim = s.animate(
-        [{ width: s._oW + "px" }, { width: s._nW + "px" }],
+        [{ width: s._startW + "px" }, { width: s._nW + "px" }],
         { duration: D, easing: EASE_H, fill: "both" }
       );
     }

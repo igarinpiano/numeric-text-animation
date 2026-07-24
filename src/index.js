@@ -374,11 +374,14 @@ export class NumericText {
     // the interrupted one was — no snap. Slots whose glyph did NOT change but
     // were still mid-slide are queued to keep gliding to rest instead of being
     // cut to a static glyph.
-    const oldX   = new Map();
-    const carryY = new Map();
-    const settle = new Set();
+    const oldX     = new Map();
+    const carryY   = new Map();
+    const widthNow = new Map(); // live rendered width per key (for symmetric width tween)
+    const settle   = new Set();
     for (const [k, slot] of this._slotMap) {
-      oldX.set(k, slot.getBoundingClientRect().left);
+      const r = slot.getBoundingClientRect();
+      oldX.set(k, r.left);
+      widthNow.set(k, r.width);
       const nt = slot._nt;
       if (nt && nt.track && nt.anim && nt.anim.playState === 'running') {
         const tr = getComputedStyle(nt.track).transform;
@@ -437,16 +440,31 @@ export class NumericText {
     if (this._suf) el.appendChild(sufEl || this._makeSuf());
 
     // ── Width measurement (batched reflows) ─────────────────────────
+    // Measure the new glyph's and the old glyph's natural widths *separately*
+    // so a slot can tween its width in BOTH directions — a widening digit grows
+    // and a narrowing digit shrinks, symmetrically. (Measuring with both faces
+    // shown only ever yields max(old, new), which is why widening used to jump
+    // straight to full width while narrowing animated.)
     for (const s of animSlots) s._nt.oldFace.style.display = 'none';
-    for (const s of animSlots) s._nW = s.getBoundingClientRect().width;
+    for (const s of animSlots) { const r = s.getBoundingClientRect(); s._nW = r.width; s._h = r.height; }
     for (const s of animSlots) s._nt.oldFace.style.display = '';
-    for (const s of animSlots) { const r = s.getBoundingClientRect(); s._oW = r.width; s._h = r.height; }
+    for (const s of animSlots) s._nt.newFace.style.display = 'none';
+    for (const s of animSlots) s._oW = s.getBoundingClientRect().width;
+    for (const s of animSlots) s._nt.newFace.style.display = '';
 
-    // Slots whose old glyph is wider → animate the shrink so the row reflows smoothly.
-    const shrinkSlots = animSlots.filter(s => s._oW - s._nW > 0.5);
-    for (const s of shrinkSlots) s.style.width = s._oW + 'px';
+    // Slots whose glyph width changes → tween the width so the row reflows
+    // smoothly either way. Start from the live width (so a retargeted, still
+    // mid-tween slot continues instead of snapping) and lock it before the FLIP
+    // measurement so FLIP sees the current layout (dx≈0 here — the width tween
+    // drives the reflow; FLIP is left to absorb shifts from added/removed
+    // digits).
+    const widthSlots = animSlots.filter(s => Math.abs(s._oW - s._nW) > 0.5);
+    for (const s of widthSlots) {
+      s._startW = widthNow.has(s._nt.key) ? widthNow.get(s._nt.key) : s._oW;
+      s.style.width = s._startW + 'px';
+    }
 
-    // ── FLIP: horizontal deltas (measured with shrink widths still locked) ──
+    // ── FLIP: horizontal deltas (measured with widths locked) ───────
     const flipList = [];
     for (const [key, slot] of this._slotMap) {
       if (!oldX.has(key)) continue;
@@ -464,9 +482,9 @@ export class NumericText {
         { duration: D, easing: EASE_H, fill: 'both' },
       );
     }
-    for (const s of shrinkSlots) {
+    for (const s of widthSlots) {
       s._widthAnim = s.animate(
-        [{ width: s._oW + 'px' }, { width: s._nW + 'px' }],
+        [{ width: s._startW + 'px' }, { width: s._nW + 'px' }],
         { duration: D, easing: EASE_H, fill: 'both' },
       );
     }
