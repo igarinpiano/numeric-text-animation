@@ -10,7 +10,7 @@
     body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:40px; }
     h1 { font-size:22px; font-weight:600; margin-bottom:24px }
     .row { display:flex; align-items:center; gap:24px; margin-bottom:28px; flex-wrap:wrap }
-    .display { font-size:56px; font-weight:300; line-height:1; font-variant-numeric:tabular-nums; font-family:'SF Mono',ui-monospace,monospace; min-width:260px }
+    .display { font-size:56px; font-weight:300; line-height:1; font-variant-numeric:tabular-nums; font-family:'SF Mono',ui-monospace,monospace }
     .display.prop { font-family:Georgia,serif; font-variant-numeric:proportional-nums }
     .display.jp { font-family:'Hiragino Sans','Noto Sans JP',sans-serif; font-size:44px }
     .label { font-size:12px; color:var(--muted); width:120px }
@@ -22,7 +22,9 @@
   </style>
 </head>
 <body>
-  <h1>Retarget / Interruption stress test</h1>
+  <h1>Retarget / Interruption stress test
+    <span id="build" style="font-size:12px;font-weight:400;color:var(--muted);margin-left:10px"></span>
+  </h1>
   <div class="controls">
     <button id="mode-bounce" class="on">🌊 Bounce</button>
     <button id="mode-ease">✦ Ease</button>
@@ -43,8 +45,8 @@
       <input id="fade" type="checkbox" checked> opacity cross-fade
     </label>
     <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">
-      duration <input id="dur" type="range" min="150" max="800" step="10" value="400" style="width:140px">
-      <span id="dur-v" style="width:44px;display:inline-block">400ms</span>
+      duration <input id="dur" type="range" min="150" max="3000" step="10" value="400" style="width:180px">
+      <span id="dur-v" style="width:52px;display:inline-block">400ms</span>
     </label>
   </div>
 
@@ -57,7 +59,8 @@
       <span id="mindur-v" style="width:44px;display:inline-block">200ms</span>
     </label>
     <span style="color:var(--muted);font-size:13px">|</span>
-    <button id="toggle2">Hammer ¥1,111 ⇄ 8,888</button>
+    <button id="step2" class="on">¥1,111 ⇄ 8,888 (single)</button>
+    <button id="toggle2">Hammer (continuous)</button>
     <button id="stop2">■ Stop hammer</button>
   </div>
 
@@ -81,7 +84,18 @@
   </div>
 
   <script type="module">
-    import NumericText from '../src/index.js';
+    // Cache-bust so a force-reload always fetches the freshest src (the local
+    // static server may not send no-cache headers).
+    const bust = Date.now();
+    const NumericText = (await import('../src/index.js?v=' + bust)).default;
+    // Prove which build is loaded + whether it has the symmetric-width fix.
+    try {
+      const src = await (await fetch('../src/index.js?v=' + bust)).text();
+      const hasFix = src.includes('widthSlots') && src.includes('_startW');
+      document.getElementById('build').textContent =
+        `loaded ${new Date().toLocaleTimeString()} · symmetric-width: ${hasFix ? '✓' : '✗ STALE'}`;
+      document.getElementById('build').style.color = hasFix ? '#30d158' : '#ff453a';
+    } catch (_) {}
 
     const cfgs = {
       1: { el:'#d1', type:'integer', vals:[128, 12580, 9, 4200000, 777] },
@@ -144,8 +158,12 @@
     const mindur = document.getElementById('mindur'), mindurV = document.getElementById('mindur-v');
     mindur.oninput = () => { mindurV.textContent = mindur.value + 'ms'; applyOpts({ minDuration: +mindur.value }); };
 
-    // Dedicated reproduction of the reported case: rapidly toggle ¥1,111 ⇄ 8,888
-    let hammer = null, hammerFlag = 0;
+    // Reproduction of the reported case on the ¥ proportional card.
+    let hammer = null, hammerFlag = 0, stepFlag = 0;
+    // SINGLE clean transition — click it once, watch one 1,111 → 8,888 (or back).
+    // This is the honest test of the width tween; the continuous hammer below
+    // interrupts every 130ms so no single tween ever finishes.
+    document.getElementById('step2').onclick = () => { stepFlag ^= 1; insts[2].set(stepFlag ? 8888 : 1111); };
     document.getElementById('toggle2').onclick = () => {
       if (hammer) clearInterval(hammer);
       hammer = setInterval(() => { hammerFlag ^= 1; insts[2].set(hammerFlag ? 8888 : 1111); }, 130);
