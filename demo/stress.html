@@ -48,6 +48,19 @@
     </label>
   </div>
 
+  <div class="controls" style="margin-bottom:24px">
+    <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px">
+      <input id="adaptive" type="checkbox" checked> adaptive duration (crisper when fast)
+    </label>
+    <label style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">
+      min duration <input id="mindur" type="range" min="80" max="400" step="10" value="200" style="width:150px">
+      <span id="mindur-v" style="width:44px;display:inline-block">200ms</span>
+    </label>
+    <span style="color:var(--muted);font-size:13px">|</span>
+    <button id="toggle2">Hammer ¥1,111 ⇄ 8,888</button>
+    <button id="stop2">■ Stop hammer</button>
+  </div>
+
   <div class="card">
     <div class="row">
       <span class="label">integer<br>mono</span>
@@ -68,9 +81,7 @@
   </div>
 
   <script type="module">
-    // Dev-only cache-bust so edits to ../src/index.js are always picked up
-    // (the local static server sends no Cache-Control header).
-    const NumericText = (await import('../src/index.js?v=' + Date.now())).default;
+    import NumericText from '../src/index.js';
 
     const cfgs = {
       1: { el:'#d1', type:'integer', vals:[128, 12580, 9, 4200000, 777] },
@@ -128,6 +139,18 @@
     fade.onchange = () => applyOpts({ fade: fade.checked });
     const dur = document.getElementById('dur'), durV = document.getElementById('dur-v');
     dur.oninput = () => { durV.textContent = dur.value + 'ms'; applyOpts({ duration: +dur.value }); };
+    const adaptive = document.getElementById('adaptive');
+    adaptive.onchange = () => applyOpts({ adaptive: adaptive.checked });
+    const mindur = document.getElementById('mindur'), mindurV = document.getElementById('mindur-v');
+    mindur.oninput = () => { mindurV.textContent = mindur.value + 'ms'; applyOpts({ minDuration: +mindur.value }); };
+
+    // Dedicated reproduction of the reported case: rapidly toggle ¥1,111 ⇄ 8,888
+    let hammer = null, hammerFlag = 0;
+    document.getElementById('toggle2').onclick = () => {
+      if (hammer) clearInterval(hammer);
+      hammer = setInterval(() => { hammerFlag ^= 1; insts[2].set(hammerFlag ? 8888 : 1111); }, 130);
+    };
+    document.getElementById('stop2').onclick = () => { if (hammer) { clearInterval(hammer); hammer = null; } };
 
     window._insts = insts;
   </script>

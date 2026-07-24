@@ -135,7 +135,12 @@ export class NumericText {
    * @param {number}  [options.decimals=0]  decimal places (type:'decimal' only)
    * @param {boolean} [options.bounce=true] true: spring bounce / false: ease only
    * @param {number}  [options.stagger=40]  ms delay per changed character (left→right)
-   * @param {number}  [options.duration=400] animation duration in ms
+   * @param {number}  [options.duration=400] base animation duration in ms
+   * @param {boolean} [options.adaptive=true] shorten the duration toward
+   *                                          `minDuration` when values arrive
+   *                                          faster than `duration` (crisper
+   *                                          under rapid updates)
+   * @param {number}  [options.minDuration=200] floor for the adaptive duration
    * @param {number}  [options.blur=0.06]   motion-blur peak as a fraction of the
    *                                         text height (0 disables)
    * @param {boolean} [options.fade=true]   cross-fade opacity between old/new glyph
@@ -148,21 +153,25 @@ export class NumericText {
     const {
       type = 'integer', decimals = 0,
       bounce = true, stagger = 40, duration = 400,
+      adaptive = true, minDuration = 200,
       blur = 0.06, fade = true,
       pre = '', suf = '',
     } = options;
-    this._type     = type;
-    this._decimals = decimals;
-    this._bounce   = bounce;
-    this._stagger  = stagger;
-    this._duration = duration;
-    this._blur     = blur;
-    this._fade     = fade;
-    this._pre      = pre;
-    this._suf      = suf;
-    this._value    = null;   // last set value (null = first call)
-    this._slotMap  = new Map(); // key → slot element
-    this._gen      = 0;         // animation generation (invalidates stale cleanups)
+    this._type        = type;
+    this._decimals    = decimals;
+    this._bounce      = bounce;
+    this._stagger     = stagger;
+    this._duration    = duration;
+    this._adaptive    = adaptive;
+    this._minDuration = minDuration;
+    this._blur        = blur;
+    this._fade        = fade;
+    this._pre         = pre;
+    this._suf         = suf;
+    this._value       = null;   // last set value (null = first call)
+    this._lastSetTime = 0;      // timestamp of the last animated set (adaptive)
+    this._slotMap     = new Map(); // key → slot element
+    this._gen         = 0;         // animation generation (invalidates stale cleanups)
     injectStyles();
     // Ensure the container is inline-flex so slots sit side by side
     this._el.style.display = 'inline-flex';
@@ -194,11 +203,13 @@ export class NumericText {
    */
   configure(options = {}) {
     Object.assign(this, {
-      _bounce:   options.bounce   ?? this._bounce,
-      _stagger:  options.stagger  ?? this._stagger,
-      _duration: options.duration ?? this._duration,
-      _blur:     options.blur     ?? this._blur,
-      _fade:     options.fade     ?? this._fade,
+      _bounce:      options.bounce      ?? this._bounce,
+      _stagger:     options.stagger     ?? this._stagger,
+      _duration:    options.duration    ?? this._duration,
+      _adaptive:    options.adaptive    ?? this._adaptive,
+      _minDuration: options.minDuration ?? this._minDuration,
+      _blur:        options.blur        ?? this._blur,
+      _fade:        options.fade        ?? this._fade,
     });
   }
 
@@ -210,6 +221,9 @@ export class NumericText {
    *   data-nt="integer|decimal|string"
    *   data-nt-bounce="true|false"
    *   data-nt-stagger="40"
+   *   data-nt-duration="400"
+   *   data-nt-adaptive="true|false"
+   *   data-nt-min-duration="200"
    *   data-nt-blur="0.06"
    *   data-nt-fade="true|false"
    *   data-nt-pre="¥"
@@ -222,15 +236,17 @@ export class NumericText {
     return [...document.querySelectorAll(selector)].map(el => {
       const d = el.dataset;
       const nt = new NumericText(el, {
-        type:     d.nt     || 'integer',
-        bounce:   d.ntBounce  !== 'false',
-        stagger:  Number(d.ntStagger  || 40),
-        duration: Number(d.ntDuration || 400),
-        blur:     d.ntBlur !== undefined ? Number(d.ntBlur) : 0.06,
-        fade:     d.ntFade !== 'false',
-        decimals: Number(d.ntDecimals || 0),
-        pre:      d.ntPre  || '',
-        suf:      d.ntSuf  || '',
+        type:        d.nt     || 'integer',
+        bounce:      d.ntBounce  !== 'false',
+        stagger:     Number(d.ntStagger  || 40),
+        duration:    Number(d.ntDuration || 400),
+        adaptive:    d.ntAdaptive !== 'false',
+        minDuration: Number(d.ntMinDuration || 200),
+        blur:        d.ntBlur !== undefined ? Number(d.ntBlur) : 0.06,
+        fade:        d.ntFade !== 'false',
+        decimals:    Number(d.ntDecimals || 0),
+        pre:         d.ntPre  || '',
+        suf:         d.ntSuf  || '',
       });
       nt.set(el.textContent.trim());
       return nt;
@@ -317,12 +333,25 @@ export class NumericText {
 
   _animate(newVal, oldVal) {
     const el     = this._el;
-    const D      = this._duration;
     const EASE_H = 'cubic-bezier(.4,0,.2,1)';  // horizontal slides
     const EASE_V = 'cubic-bezier(.34,0,.64,1)'; // vertical glide (retarget)
     const blurR  = this._blur;
     const fade   = this._fade;
     const gen    = ++this._gen;               // supersedes every earlier animation
+
+    // Adaptive duration: when values arrive faster than the base duration, run
+    // shorter (down to minDuration) so the digits keep up crisply instead of
+    // lagging behind a burst of updates. The stagger shrinks with it so a short
+    // animation isn't dominated by per-digit delay. A single update after a
+    // pause always plays the full duration.
+    const baseD = this._duration;
+    const now   = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const gap   = now - this._lastSetTime;
+    this._lastSetTime = now;
+    const D = this._adaptive
+      ? Math.round(Math.max(this._minDuration, Math.min(baseD, gap)))
+      : baseD;
+    const stagger = this._adaptive ? this._stagger * (D / baseD) : this._stagger;
 
     const newFmt    = this._format(newVal);
     const oldFmt    = this._format(oldVal);
@@ -391,7 +420,7 @@ export class NumericText {
         const up = isSettle ? false
           : (globalUp !== null ? globalUp
             : (ch.codePointAt(0) > (old?.ch.codePointAt(0) ?? 0)));
-        const delay = (staggerMap.get(key) || 0) * this._stagger;
+        const delay = (staggerMap.get(key) || 0) * stagger;
         slot = animSlot(oldCh, ch, up, delay);
         slot._nt.key = key;
         slot._nt.settle = isSettle;
@@ -455,7 +484,7 @@ export class NumericText {
       let vFrames, vTiming;
       if (nt.interrupted) {
         vFrames = [{ transform: `translateY(${nt.carryY}px)` }, { transform: `translateY(${endPx}px)` }];
-        vTiming = { duration: Math.max(180, Math.round(D * 0.6)), delay: 0, easing: EASE_V, fill: 'both' };
+        vTiming = { duration: Math.max(120, Math.round(D * 0.7)), delay: 0, easing: EASE_V, fill: 'both' };
       } else if (this._bounce && !nt.settle) {
         vFrames = bounceFrames(up);
         vTiming = { duration: D, delay, easing: 'linear', fill: 'both' };
@@ -493,7 +522,7 @@ export class NumericText {
     // in-flight animation (the old value-equality guard failed when a value
     // repeated). _render is used because it produces a correct static result
     // even when rAF was throttled in a background tab.
-    const maxDelay = Math.max(0, (staggerIdx - 1) * this._stagger);
+    const maxDelay = Math.max(0, (staggerIdx - 1) * stagger);
     setTimeout(() => {
       if (this._gen === gen) this._render(newVal);
     }, D + maxDelay + 120);
