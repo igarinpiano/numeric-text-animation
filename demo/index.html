@@ -1,339 +1,1110 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NumericText.js — Demo</title>
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NumericText.js — Signal Lab</title>
+<meta name="description" content="An interactive lab for NumericText.js — a SwiftUI-style per-character slide animation library for the web. Tune every option live and copy the code that produces it.">
+<style>
+:root{
+  --bg:#07070a; --bg2:#0c0c11;
+  --panel:rgba(255,255,255,.045); --panel-strong:rgba(255,255,255,.07);
+  --border:rgba(255,255,255,.09); --border-strong:rgba(255,255,255,.16);
+  --text:#f3f3f6; --muted:#8b8b96; --dim:#82828d;
+  --accent:#0a84ff; --accent2:#7c5cff; --accent-soft:rgba(10,132,255,.16);
+  --green:#30d158; --red:#ff453a; --amber:#ffd60a;
+  --radius-xl:22px; --radius-lg:16px; --radius:11px; --radius-sm:7px;
+  --mono:'SF Mono',ui-monospace,'Cascadia Code','JetBrains Mono',Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;
+  --serif:Georgia,'Times New Roman',serif;
+  --jp:'Hiragino Sans','Yu Gothic UI','Noto Sans JP',sans-serif;
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+  min-height:100vh; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+::selection{background:var(--accent-soft); color:#fff}
 
-    :root {
-      --bg: #0a0a0a;
-      --surface: #141414;
-      --border: #2a2a2a;
-      --text: #f2f2f2;
-      --muted: #666;
-      --accent: #0a84ff;
-      --green: #30d158;
-      --red: #ff453a;
-      --blue: #0a84ff;
-      --radius: 14px;
-      --mono: 'SF Mono', ui-monospace, monospace;
-    }
+/* ── ambient backdrop ─────────────────────────────────────────────── */
+.mesh{
+  position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+}
+.mesh::before, .mesh::after{
+  content:''; position:absolute; width:140vmax; height:140vmax; left:50%; top:50%;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(10,132,255,.16), transparent 55%),
+    radial-gradient(circle at 70% 60%, rgba(124,92,255,.14), transparent 55%),
+    radial-gradient(circle at 45% 80%, rgba(48,209,88,.06), transparent 50%);
+  transform:translate(-50%,-50%) rotate(0deg);
+  animation:mesh-drift 46s linear infinite;
+  will-change:transform;
+}
+.mesh::after{ animation-duration:64s; animation-direction:reverse; opacity:.6 }
+@keyframes mesh-drift{ to{ transform:translate(-50%,-50%) rotate(360deg) } }
+.spotlight{
+  position:fixed; inset:0; z-index:1; pointer-events:none;
+  background:radial-gradient(600px circle at var(--sx,50%) var(--sy,30%), rgba(255,255,255,.05), transparent 60%);
+  transition:opacity .3s;
+}
+@media (prefers-reduced-motion:reduce){
+  .mesh::before,.mesh::after{ animation:none }
+  .stage .pulse.fire{ animation:none }
+}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      padding: 40px 20px;
-      min-height: 100vh
-    }
+/* ── layout shell ─────────────────────────────────────────────────── */
+.shell{ position:relative; z-index:2; max-width:1180px; margin:0 auto; padding:28px 20px 80px }
+header.top{
+  display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  margin-bottom:34px;
+}
+.brand{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap }
+.brand h1{ font-size:21px; font-weight:650; margin:0; letter-spacing:-.01em }
+.brand .ver{ font-family:var(--mono); font-size:11px; color:var(--dim); background:var(--panel); border:1px solid var(--border); padding:2px 8px; border-radius:99px }
+.brand .tagline{ color:var(--muted); font-size:13px }
+.top a.gh{ color:var(--muted); font-size:13px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); padding:7px 13px; border-radius:99px; transition:.15s }
+.top a.gh:hover{ color:var(--text); border-color:var(--border-strong); background:var(--panel) }
 
-    h1 {
-      font-size: 28px;
-      font-weight: 600;
-      margin-bottom: 6px
-    }
+/* ── glass panel primitive ────────────────────────────────────────── */
+.glass{
+  background:linear-gradient(180deg, var(--panel-strong), var(--panel));
+  border:1px solid var(--border); border-radius:var(--radius-lg);
+  backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 20px 60px -30px rgba(0,0,0,.6);
+}
 
-    .sub {
-      color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 32px
-    }
+/* ── stage ─────────────────────────────────────────────────────────── */
+.stage-wrap{ position:relative; border-radius:var(--radius-xl); padding:2px; margin-bottom:18px }
+.stage-wrap::before{
+  content:''; position:absolute; inset:0; border-radius:inherit; padding:1px;
+  background:linear-gradient(135deg, rgba(10,132,255,.5), rgba(124,92,255,.15), transparent 60%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none;
+}
+.stage{
+  position:relative; border-radius:calc(var(--radius-xl) - 2px); overflow:hidden;
+  padding:52px 32px 34px; text-align:center;
+}
+.stage .pulse{
+  position:absolute; left:50%; top:50%; width:10px; height:10px; border-radius:50%;
+  transform:translate(-50%,-50%); pointer-events:none;
+  box-shadow:0 0 0 0 rgba(10,132,255,.5);
+}
+.stage .pulse.fire{ animation:pulse-ring var(--pulse-dur,400ms) var(--ease-out) }
+@keyframes pulse-ring{
+  0%{ box-shadow:0 0 0 0 rgba(10,132,255,.45) }
+  100%{ box-shadow:0 0 0 340px rgba(10,132,255,0) }
+}
+.stage-value-row{ display:flex; justify-content:center; margin-bottom:6px; min-height:1.3em }
+#stage-value{ font-size:clamp(40px,8vw,92px); font-weight:280; line-height:1; color:#fff; filter:drop-shadow(0 4px 30px rgba(10,132,255,.18)) }
+#stage-value.font-mono{ font-family:var(--mono); font-variant-numeric:tabular-nums }
+#stage-value.font-prop{ font-family:var(--serif); font-variant-numeric:proportional-nums }
+#stage-value.font-serif{ font-family:var(--serif); font-style:italic; font-variant-numeric:proportional-nums }
+#stage-value.font-jp{ font-family:var(--jp) }
+.stage.rebuilding #stage-value{ opacity:0; transition:opacity .18s }
+.stage-meta{ display:flex; justify-content:center; gap:14px; flex-wrap:wrap; font-family:var(--mono); font-size:11px; color:var(--dim) }
+.stage-meta b{ color:var(--muted); font-weight:500 }
+.stage-meta .live-ms{ display:inline-flex; align-items:center; gap:4px }
+.stage-meta .live-ms .miniNT{ font-size:11px; color:var(--accent) }
 
-    .sub a {
-      color: var(--accent);
-      text-decoration: none
-    }
+/* ── value composer ───────────────────────────────────────────────── */
+.composer{ padding:18px 28px 24px; display:flex; flex-direction:column; gap:14px }
+.composer-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center }
+.numfield{
+  background:rgba(0,0,0,.35); border:1px solid var(--border); color:var(--text);
+  font-family:var(--mono); font-size:15px; padding:9px 14px; border-radius:var(--radius);
+  width:180px; text-align:center; transition:.15s;
+}
+.numfield:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft) }
+.strfield{
+  background:rgba(0,0,0,.35); border:1px solid var(--border); color:var(--text);
+  font-size:16px; padding:9px 16px; border-radius:var(--radius); width:min(360px,70vw);
+  transition:.15s;
+}
+.strfield:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft) }
+.iconbtn{
+  background:var(--panel); border:1px solid var(--border); color:var(--muted); cursor:pointer;
+  width:38px; height:38px; border-radius:var(--radius); display:inline-flex; align-items:center; justify-content:center;
+  font-size:15px; transition:.15s;
+}
+.iconbtn:hover{ color:var(--text); border-color:var(--border-strong); background:var(--panel-strong) }
 
-    /* mode toggle */
-    .toggle {
-      display: inline-flex;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-      padding: 3px;
-      gap: 3px;
-      margin-bottom: 28px
-    }
+.scrub{
+  position:relative; height:60px; border-radius:var(--radius); cursor:ew-resize; user-select:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  border:1px solid var(--border); overflow:hidden; touch-action:none;
+}
+.scrub:focus-visible{ outline:2px solid var(--accent); outline-offset:2px }
+.scrub::before{
+  content:''; position:absolute; left:50%; top:8px; bottom:8px; width:1px; background:var(--border-strong);
+}
+.scrub .hint{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:8px;
+  color:var(--dim); font-size:11px; letter-spacing:.06em; text-transform:uppercase; pointer-events:none;
+}
+.scrub .handle{
+  position:absolute; top:50%; left:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #fff, var(--accent) 70%); box-shadow:0 6px 20px rgba(10,132,255,.5);
+  transition:left .35s var(--ease-out); pointer-events:none;
+}
+.scrub.dragging .handle{ transition:none }
+.scrub.dragging{ background:linear-gradient(180deg, rgba(10,132,255,.09), rgba(10,132,255,.02)) }
 
-    .toggle button {
-      padding: 6px 18px;
-      border-radius: 99px;
-      border: none;
-      background: none;
-      color: var(--muted);
-      cursor: pointer;
-      font-size: 13px;
-      transition: all .2s
-    }
+.chips{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center }
+.chip{
+  background:var(--panel); border:1px solid var(--border); color:var(--muted); cursor:pointer;
+  font-size:12.5px; padding:7px 14px; border-radius:99px; transition:.15s; font-family:inherit;
+}
+.chip:hover{ color:var(--text); border-color:var(--accent); background:var(--accent-soft) }
 
-    .toggle button.on {
-      background: var(--accent);
-      color: #fff
-    }
+/* ── patches strip ────────────────────────────────────────────────── */
+.patches{ display:flex; gap:9px; flex-wrap:wrap; padding:16px 28px 26px; justify-content:center }
+.patch{
+  background:var(--panel); border:1px solid var(--border); color:var(--text); cursor:pointer;
+  font-size:12.5px; font-weight:500; padding:9px 16px; border-radius:var(--radius); transition:.15s;
+  display:flex; align-items:center; gap:7px; font-family:inherit;
+}
+.patch:hover{ border-color:var(--accent2); background:rgba(124,92,255,.12); transform:translateY(-1px) }
+.patch .emoji{ font-size:14px }
 
-    /* grid */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 14px;
-      margin-bottom: 14px
-    }
+/* ── two-column: rail + code panel ────────────────────────────────── */
+.workbench{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; margin-bottom:18px }
+@media (max-width:920px){ .workbench{ grid-template-columns:1fr } }
 
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px
-    }
+.rail{ padding:22px 22px 26px; display:flex; flex-direction:column; gap:20px }
+.module{ display:flex; flex-direction:column; gap:12px }
+.module h3{
+  margin:0; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); font-weight:650;
+  display:flex; align-items:center; gap:8px;
+}
+.module h3::after{ content:''; flex:1; height:1px; background:var(--border) }
+.ctrl-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:30px }
+.ctrl-row .ctrl-label{ font-size:13px; color:var(--text); display:flex; align-items:center; gap:6px; white-space:nowrap }
+.ctrl-row .ctrl-label .hint-dot{
+  width:14px; height:14px; border-radius:50%; background:var(--panel); border:1px solid var(--border);
+  font-size:9px; color:var(--dim); display:inline-flex; align-items:center; justify-content:center; cursor:help;
+}
+.ctrl-row.disabled{ opacity:.38; pointer-events:none }
 
-    .label {
-      font-size: 12px;
-      color: var(--muted);
-      display: flex;
-      justify-content: space-between;
-      align-items: center
-    }
+.segmented{ display:inline-flex; background:rgba(0,0,0,.3); border:1px solid var(--border); border-radius:99px; padding:2px; gap:2px }
+.segmented button{
+  background:none; border:none; color:var(--muted); font-size:12px; padding:6px 13px; border-radius:99px; cursor:pointer;
+  transition:.15s; font-family:inherit;
+}
+.segmented button.on{ background:var(--accent); color:#fff }
 
-    .tag {
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 4px;
-      background: #222;
-      color: #888
-    }
+.switch{ position:relative; width:40px; height:23px; flex:none }
+.switch input{ opacity:0; width:100%; height:100%; margin:0; cursor:pointer; position:absolute; inset:0 }
+.switch .track{
+  position:absolute; inset:0; background:rgba(255,255,255,.12); border-radius:99px; transition:.2s;
+  border:1px solid var(--border);
+}
+.switch .thumb{
+  position:absolute; top:2px; left:2px; width:17px; height:17px; border-radius:50%; background:#fff;
+  transition:transform .2s var(--ease-out); box-shadow:0 1px 3px rgba(0,0,0,.4);
+}
+.switch input:checked ~ .track{ background:var(--accent) }
+.switch input:checked ~ .thumb{ transform:translateX(17px) }
+.switch input:focus-visible ~ .track{ outline:2px solid var(--accent); outline-offset:2px }
 
-    .badge {
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 4px;
-      opacity: 0;
-      transition: opacity .2s
-    }
+.sliderfield{ display:flex; align-items:center; gap:10px; flex:1; min-width:0; justify-content:flex-end }
+.sliderfield input[type=range]{
+  -webkit-appearance:none; appearance:none; flex:1; max-width:150px; height:4px; border-radius:99px;
+  background:rgba(255,255,255,.14); outline:none; cursor:pointer;
+}
+input[type=range]:focus-visible{ outline:none }
+input[type=range]:focus-visible::-webkit-slider-thumb{ box-shadow:0 0 0 4px var(--accent-soft), 0 2px 8px rgba(10,132,255,.5) }
+input[type=range]:focus-visible::-moz-range-thumb{ box-shadow:0 0 0 4px var(--accent-soft), 0 2px 8px rgba(10,132,255,.5) }
+.sliderfield input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff,var(--accent) 75%); box-shadow:0 2px 8px rgba(10,132,255,.5); cursor:grab;
+  margin-top:-6px;
+}
+.sliderfield input[type=range]::-moz-range-thumb{
+  width:16px; height:16px; border:none; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff,var(--accent) 75%); box-shadow:0 2px 8px rgba(10,132,255,.5); cursor:grab;
+}
+.sliderfield .readout{ font-family:var(--mono); font-size:12px; color:var(--muted); width:56px; text-align:right; flex:none }
+.sliderfield .readout .miniNT{ font-size:12px }
 
-    .badge.on {
-      opacity: 1
-    }
+.textrow{ display:flex; gap:8px }
+.textrow input{
+  background:rgba(0,0,0,.3); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm);
+  padding:6px 10px; font-size:13px; width:70px; font-family:var(--mono);
+}
+.textrow input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft) }
 
-    .badge.up {
-      background: #0d2e1a;
-      color: var(--green)
-    }
+.display-note{ font-size:11px; color:var(--dim); line-height:1.5; padding-top:2px }
 
-    .badge.dn {
-      background: #2e0d0d;
-      color: var(--red)
-    }
+/* ── code panel ────────────────────────────────────────────────────── */
+.codepanel{ display:flex; flex-direction:column; overflow:hidden }
+.tabs{ display:flex; border-bottom:1px solid var(--border); padding:0 10px }
+.tabs button{
+  background:none; border:none; color:var(--dim); font-size:12.5px; padding:14px 14px 12px; cursor:pointer;
+  border-bottom:2px solid transparent; margin-bottom:-1px; transition:.15s; font-family:inherit;
+}
+.tabs button.on{ color:var(--text); border-color:var(--accent) }
+.tabs .spacer{ flex:1 }
+.codepanel-actions{ display:flex; align-items:center; gap:6px; padding:6px 8px }
+.codepanel-actions button{
+  background:none; border:1px solid var(--border); color:var(--muted); cursor:pointer; border-radius:var(--radius-sm);
+  padding:6px 10px; font-size:11.5px; display:flex; align-items:center; gap:5px; transition:.15s; font-family:inherit;
+}
+.codepanel-actions button:hover{ color:var(--text); border-color:var(--border-strong) }
+.codepanel-actions button.copied{ color:var(--green); border-color:var(--green) }
+.codebody{ position:relative; flex:1 }
+.codebody pre{
+  margin:0; padding:20px 22px; font-family:var(--mono); font-size:12.5px; line-height:1.85; overflow:auto;
+  max-height:420px; color:#c9d4e0; tab-size:2;
+}
+.codebody pre .ln{ display:block; border-radius:4px; padding:0 4px; margin:0 -4px; transition:background .5s }
+.codebody pre .ln.flash{ background:rgba(10,132,255,.22); transition:background .05s }
+.tok-kw{ color:#ff7ab2 } .tok-str{ color:#a5e075 } .tok-num{ color:#7ec8e3 }
+.tok-prop{ color:#e3b341 } .tok-com{ color:#5b6472; font-style:italic } .tok-punc{ color:#8b93a1 }
 
-    .badge.ch {
-      background: #0d1a2e;
-      color: var(--blue)
-    }
+/* ── monitor wall ──────────────────────────────────────────────────── */
+.section-label{ display:flex; align-items:center; gap:12px; margin:34px 0 14px; color:var(--muted); font-size:12px; letter-spacing:.08em; text-transform:uppercase }
+.section-label::after{ content:''; flex:1; height:1px; background:var(--border) }
+.wall{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px }
+@media (max-width:920px){ .wall{ grid-template-columns:1fr } }
+.card{ padding:22px; display:flex; flex-direction:column; gap:14px; position:relative; overflow:hidden }
+.card h4{ margin:0; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:space-between }
+.card h4 .pause{ background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:99px; width:26px; height:26px; cursor:pointer; font-size:11px; display:inline-flex; align-items:center; justify-content:center }
+.card h4 .pause:hover{ color:var(--text) }
+.card .sub{ font-size:11px; color:var(--dim); margin-top:-8px }
 
-    /* display */
-    .display {
-      font-size: 44px;
-      font-weight: 300;
-      line-height: 1;
-      color: var(--text)
-    }
+.ticker-value{ font-family:var(--mono); font-size:32px; font-weight:300; font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:8px }
+.ticker-arrow{ font-size:14px; opacity:0; transition:opacity .2s,color .2s }
+.ticker-arrow.up{ color:var(--green); opacity:1 } .ticker-arrow.down{ color:var(--red); opacity:1 }
+canvas.spark{ width:100%; height:44px; display:block; border-radius:6px }
 
-    .display.mono {
-      font-family: var(--mono);
-      font-variant-numeric: tabular-nums
-    }
+.board-value{ font-family:var(--jp); font-size:26px; font-weight:400 }
+.board-eta{ font-family:var(--mono); font-size:11px; color:var(--dim) }
 
-    .display.prop {
-      font-family: Georgia, serif;
-      font-variant-numeric: proportional-nums
-    }
+.stress-row{ display:flex; align-items:center; gap:10px }
+.stress-count{ font-family:var(--mono); font-size:26px; font-weight:300; display:flex; align-items:baseline; gap:6px }
+.stress-count .unit{ font-size:12px; color:var(--dim) }
+.playbtn{
+  background:var(--accent); color:#fff; border:none; border-radius:99px; width:38px; height:38px; cursor:pointer;
+  font-size:14px; flex:none; display:inline-flex; align-items:center; justify-content:center; transition:.15s;
+}
+.playbtn.off{ background:var(--panel); color:var(--muted); border:1px solid var(--border) }
+.stress-ms{ font-family:var(--mono); font-size:11px; color:var(--dim) }
 
-    .display.jp {
-      font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Noto Sans JP', sans-serif;
-      font-size: 38px
-    }
+/* ── footer ────────────────────────────────────────────────────────── */
+footer{ margin-top:50px; padding-top:26px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; color:var(--dim); font-size:12px }
+footer a{ color:var(--muted); text-decoration:none } footer a:hover{ color:var(--text) }
+footer code{ font-family:var(--mono); background:var(--panel); border:1px solid var(--border); padding:2px 7px; border-radius:5px; color:var(--muted) }
 
-    button.btn {
-      background: var(--border);
-      color: var(--text);
-      border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 13px;
-      cursor: pointer;
-      transition: background .15s
-    }
-
-    button.btn:hover {
-      background: #333
-    }
-
-    .all-btn {
-      width: 100%;
-      margin-bottom: 10px
-    }
-
-    /* code section */
-    details {
-      margin-top: 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden
-    }
-
-    summary {
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      background: var(--surface);
-      list-style: none;
-      color: var(--muted)
-    }
-
-    summary::-webkit-details-marker {
-      display: none
-    }
-
-    .code-body {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px
-    }
-
-    pre {
-      background: #0d0d0d;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px;
-      font-size: 12.5px;
-      font-family: var(--mono);
-      color: #c9d1d9;
-      overflow-x: auto;
-      line-height: 1.7
-    }
-  </style>
+/* NumericText internal slot polish inside dark glass panels */
+.nt-face{ color:inherit }
+</style>
 </head>
-
 <body>
 
-  <h1>NumericText.js</h1>
-  <p class="sub">SwiftUI-style per-character slide animation for the web · <a
-      href="https://github.com/igarinpiano/numeric-text-animation">GitHub</a></p>
+<div class="mesh" aria-hidden="true"></div>
+<div class="spotlight" id="spotlight" aria-hidden="true"></div>
 
-  <div class="toggle">
-    <button class="on" id="tb" onclick="setMode(true)">🌊 Bounce</button>
-    <button id="te" onclick="setMode(false)">✦ Ease</button>
+<div class="shell">
+
+  <header class="top">
+    <div class="brand">
+      <h1>NumericText.js</h1>
+      <span class="ver">v0.2.0</span>
+      <span class="tagline">Signal Lab — tune it, drag it, copy the code</span>
+    </div>
+    <a class="gh" href="https://github.com/igarinpiano/numeric-text-animation" target="_blank" rel="noopener">
+      ★ GitHub
+    </a>
+  </header>
+
+  <!-- ── STAGE ─────────────────────────────────────────────────────── -->
+  <div class="stage-wrap glass">
+    <div class="stage" id="stageEl">
+      <span class="pulse" id="pulse"></span>
+      <div class="stage-value-row"><span id="stage-value"></span></div>
+      <div class="stage-meta">
+        <span><b>type</b> <span id="meta-type">integer</span></span>
+        <span class="live-ms"><b>last transition</b> <span id="meta-ms-host"></span> ms</span>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-row" id="composer-num">
+        <button class="iconbtn" id="numDown" title="Step down" aria-label="Step down">−</button>
+        <input class="numfield" id="numInput" type="text" inputmode="decimal" value="128">
+        <button class="iconbtn" id="numUp" title="Step up" aria-label="Step up">+</button>
+        <button class="iconbtn" id="numRandom" title="Randomize" aria-label="Randomize">🎲</button>
+      </div>
+      <div class="composer-row" id="composer-str" style="display:none">
+        <input class="strfield" id="strInput" type="text" value="東京駅" maxlength="24">
+        <button class="iconbtn" id="strRandom" title="Randomize" aria-label="Randomize">🎲</button>
+      </div>
+
+      <div class="scrub" id="scrub" tabindex="0" role="slider" aria-orientation="horizontal" aria-label="Scrub the value — drag, or use arrow keys">
+        <span class="hint" id="scrubHint">← drag to scrub →</span>
+        <span class="handle" id="scrubHandle"></span>
+      </div>
+
+      <div class="chips" id="strChips">
+        <button class="chip" data-v="東京駅">東京駅</button>
+        <button class="chip" data-v="渋谷スクランブル">渋谷スクランブル</button>
+        <button class="chip" data-v="上野">上野</button>
+        <button class="chip" data-v="🚀 Liftoff">🚀 Liftoff</button>
+        <button class="chip" data-v="Hello, world">Hello, world</button>
+      </div>
+    </div>
+
+    <div class="patches" id="patches"></div>
   </div>
 
-  <div class="grid">
-    <div class="card">
-      <div class="label"><span>Counter <span class="tag">integer · monospace</span></span><span class="badge"
-          id="b1"></span></div>
-      <div class="display mono" id="d1"></div>
-      <button class="btn" onclick="tg(1)">Toggle</button>
+  <!-- ── WORKBENCH: rail + code panel ─────────────────────────────── -->
+  <div class="workbench">
+
+    <div class="rail glass">
+
+      <div class="module">
+        <h3>Type</h3>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Value type</span>
+          <div class="segmented" id="seg-type">
+            <button data-v="integer" class="on">Integer</button>
+            <button data-v="decimal">Decimal</button>
+            <button data-v="string">String</button>
+          </div>
+        </div>
+        <div class="ctrl-row" id="row-decimals">
+          <span class="ctrl-label">decimals</span>
+          <div class="sliderfield">
+            <input type="range" id="in-decimals" min="0" max="8" step="1" value="2" aria-label="decimals">
+            <span class="readout" id="out-decimals">2</span>
+          </div>
+        </div>
+        <p class="display-note">Type, decimals and pre/suf are constructor-only in the real API — changing them rebuilds the Stage instance instead of animating.</p>
+      </div>
+
+      <div class="module">
+        <h3>Motion</h3>
+        <div class="ctrl-row">
+          <span class="ctrl-label">bounce <span class="hint-dot" tabindex="0" title="true = spring overshoot, false = plain ease" aria-label="bounce: true = spring overshoot, false = plain ease">?</span></span>
+          <label class="switch"><input type="checkbox" id="in-bounce" checked aria-label="bounce"><span class="track"></span><span class="thumb"></span></label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">blur</span>
+          <div class="sliderfield">
+            <input type="range" id="in-blur" min="0" max="0.2" step="0.01" value="0.06" aria-label="blur">
+            <span class="readout" id="out-blur"></span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">fade</span>
+          <label class="switch"><input type="checkbox" id="in-fade" checked aria-label="fade"><span class="track"></span><span class="thumb"></span></label>
+        </div>
+      </div>
+
+      <div class="module">
+        <h3>Timing</h3>
+        <div class="ctrl-row">
+          <span class="ctrl-label">stagger</span>
+          <div class="sliderfield">
+            <input type="range" id="in-stagger" min="0" max="150" step="5" value="40" aria-label="stagger (ms)">
+            <span class="readout" id="out-stagger"></span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">duration</span>
+          <div class="sliderfield">
+            <input type="range" id="in-duration" min="120" max="1600" step="10" value="400" aria-label="duration (ms)">
+            <span class="readout" id="out-duration"></span>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">adaptive <span class="hint-dot" tabindex="0" title="Shortens duration toward minDuration when set() is called faster than duration" aria-label="adaptive: shortens duration toward minDuration when set() is called faster than duration">?</span></span>
+          <label class="switch"><input type="checkbox" id="in-adaptive" checked aria-label="adaptive"><span class="track"></span><span class="thumb"></span></label>
+        </div>
+        <div class="ctrl-row" id="row-mindur">
+          <span class="ctrl-label">minDuration</span>
+          <div class="sliderfield">
+            <input type="range" id="in-mindur" min="80" max="500" step="10" value="200" aria-label="minDuration (ms)">
+            <span class="readout" id="out-minduration"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="module">
+        <h3>Dress</h3>
+        <div class="ctrl-row">
+          <span class="ctrl-label">pre / suf</span>
+          <div class="textrow">
+            <input id="in-pre" type="text" placeholder="¥" maxlength="4">
+            <input id="in-suf" type="text" placeholder="円" maxlength="4">
+          </div>
+        </div>
+        <div class="chips">
+          <button class="chip" data-pre="¥" data-suf="">¥</button>
+          <button class="chip" data-pre="$" data-suf="">$</button>
+          <button class="chip" data-pre="" data-suf="%">%</button>
+          <button class="chip" data-pre="" data-suf="円">円</button>
+          <button class="chip" data-pre="" data-suf="">clear</button>
+        </div>
+      </div>
+
+      <div class="module">
+        <h3>Display <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">(cosmetic, not a library option)</span></h3>
+        <div class="ctrl-row">
+          <span class="ctrl-label">font</span>
+          <div class="segmented" id="seg-font">
+            <button data-v="mono" class="on">Mono</button>
+            <button data-v="prop">Proportional</button>
+            <button data-v="serif">Serif</button>
+            <button data-v="jp">JP</button>
+          </div>
+        </div>
+      </div>
+
     </div>
-    <div class="card">
-      <div class="label"><span>Price <span class="tag">integer · proportional</span></span><span class="badge"
-          id="b2"></span></div>
-      <div class="display prop" id="d2"></div>
-      <button class="btn" onclick="tg(2)">Toggle</button>
+
+    <div class="codepanel glass">
+      <div class="tabs">
+        <button data-tab="module" class="on">Module</button>
+        <button data-tab="attrs">Data attributes</button>
+        <button data-tab="observer">Observer</button>
+        <span class="spacer"></span>
+      </div>
+      <div class="codepanel-actions">
+        <button id="btnShare">🔗 Share link</button>
+        <button id="btnCopy">⧉ Copy</button>
+      </div>
+      <div class="codebody"><pre id="codeOut"></pre></div>
     </div>
-    <div class="card">
-      <div class="label"><span>Decimal <span class="tag">π ↔ e</span></span><span class="badge" id="b3"></span></div>
-      <div class="display mono" id="d3"></div>
-      <button class="btn" onclick="tg(3)">Toggle</button>
-    </div>
-    <div class="card">
-      <div class="label"><span>Japanese <span class="tag">string</span></span><span class="badge" id="b4"></span></div>
-      <div class="display jp" id="d4"></div>
-      <button class="btn" onclick="tg(4)">Toggle</button>
-    </div>
+
   </div>
-  <button class="btn all-btn" onclick="[1,2,3,4].forEach(tg)">Toggle all</button>
 
-  <details>
-    <summary>Usage</summary>
-    <div class="code-body">
-      <pre>&lt;!-- CDN --&gt;
-&lt;script type="module"&gt;
-  import NumericText from 'https://cdn.jsdelivr.net/gh/igarinpiano/numeric-text-animation/src/index.js';
+  <!-- ── MONITOR WALL ──────────────────────────────────────────────── -->
+  <div class="section-label">Live elsewhere on this page — same Motion &amp; Timing settings, different scenes</div>
+  <div class="wall">
 
-  const nt = new NumericText('#price', {
-    type:    'integer',
-    bounce:  true,      // false → ease only
-    stagger: 40,        // ms delay per digit (left→right)
-    pre:     '¥',
+    <div class="card glass">
+      <h4>Live ticker <button class="pause" id="tickerPause" title="Pause/resume" aria-label="Pause or resume ticker">⏸</button></h4>
+      <p class="sub">Real random-walk .set() every ~500ms — exercises adaptive/minDuration against genuine rapid updates.</p>
+      <div class="ticker-value"><span id="ticker-nt"></span><span class="ticker-arrow" id="tickerArrow">▲</span></div>
+      <canvas class="spark" id="spark" width="300" height="44"></canvas>
+    </div>
+
+    <div class="card glass">
+      <h4>Departure board <button class="pause" id="boardPause" title="Pause/resume" aria-label="Pause or resume board">⏸</button></h4>
+      <p class="sub">type: 'string' — each character slides independently, no numeric comparison possible.</p>
+      <div class="board-value" id="board-nt"></div>
+      <div class="board-eta">next departure in <span id="boardEta">—</span>s</div>
+    </div>
+
+    <div class="card glass">
+      <h4>Interruption stress</h4>
+      <p class="sub">Hammers the Stage above — proves mid-flight retargeting never snaps, whatever you've tuned.</p>
+      <div class="stress-row">
+        <button class="playbtn off" id="stressPlay" aria-label="Start stress test">▶</button>
+        <div class="stress-count"><span id="stress-nt"></span><span class="unit">updates</span></div>
+      </div>
+      <div class="stress-ms">interval <input type="range" id="stressSpeed" min="60" max="500" step="10" value="150" aria-label="stress interval (ms)" style="width:100px;vertical-align:middle"> <span id="stressSpeedOut">150</span>ms</div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span><code>npm install numeric-text-animation</code> · Apache-2.0 © Igarin</span>
+    <span><a href="https://github.com/igarinpiano/numeric-text-animation" target="_blank" rel="noopener">Source</a> · <a href="#top">Back to top</a></span>
+  </footer>
+
+</div>
+
+<script type="module">
+import NumericText from '../src/index.js';
+
+/* ───────────────────────── shared helpers ───────────────────────── */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+function rafThrottle(fn){
+  let scheduled = false, lastArgs;
+  return (...args) => {
+    lastArgs = args;
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; fn(...lastArgs); });
+  };
+}
+
+function miniNT(el, opts){
+  const nt = new NumericText(el, { adaptive:true, minDuration:120, duration:260, stagger:0, blur:0.04, ...opts });
+  return nt;
+}
+
+/* ───────────────────────── ambient spotlight ────────────────────── */
+const spotlight = $('#spotlight');
+window.addEventListener('pointermove', rafThrottle(e => {
+  spotlight.style.setProperty('--sx', e.clientX + 'px');
+  spotlight.style.setProperty('--sy', e.clientY + 'px');
+}));
+
+/* ───────────────────────── central state ────────────────────────── */
+const state = {
+  type:'integer', decimals:2, pre:'', suf:'',
+  bounce:true, stagger:40, duration:400, adaptive:true, minDuration:200,
+  blur:0.06, fade:true,
+  value:128, font:'mono',
+};
+
+function apiOptions(s){
+  return { type:s.type, decimals:s.decimals, bounce:s.bounce, stagger:s.stagger, duration:s.duration,
+           adaptive:s.adaptive, minDuration:s.minDuration, blur:s.blur, fade:s.fade, pre:s.pre, suf:s.suf };
+}
+function configureOnly(s){
+  return { bounce:s.bounce, stagger:s.stagger, duration:s.duration, adaptive:s.adaptive,
+           minDuration:s.minDuration, blur:s.blur, fade:s.fade };
+}
+
+/* ───────────────────────── the Stage ────────────────────────────── */
+let stage = null;
+let lastStageSetAt = 0;
+let rebuildTimer = null;
+const stageEl = $('#stageEl');
+const pulse = $('#pulse');
+const metaMs = miniNT('#meta-ms-host', { type:'integer' });
+metaMs.set(0);
+
+function effectiveDurationFor(s, now){
+  if (!lastStageSetAt) return s.duration;
+  const gap = now - lastStageSetAt;
+  return s.adaptive ? Math.round(clamp(gap, s.minDuration, s.duration)) : s.duration;
+}
+
+function firePulse(ms){
+  pulse.style.setProperty('--pulse-dur', ms + 'ms');
+  pulse.classList.remove('fire');
+  void pulse.offsetWidth;
+  pulse.classList.add('fire');
+}
+
+function setStageValue(v, {silent=false} = {}){
+  state.value = v;
+  const now = performance.now();
+  const isFirst = !stage._primed;
+  if (!isFirst){
+    const d = effectiveDurationFor(state, now);
+    if (!silent){ metaMs.set(d); firePulse(d); }
+  }
+  stage._primed = true;
+  lastStageSetAt = now;
+  stage.set(v);
+  syncNumField();
+}
+
+function rebuildStage(){
+  stageEl.classList.add('rebuilding');
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(() => {
+    // The outgoing instance may still have a pending cleanup timer (its own
+    // _gen-guarded setTimeout in src/index.js) that would otherwise fire later
+    // and _render() stale content onto the #stage-value node the new instance
+    // now owns. Bumping its _gen invalidates that guard.
+    if (stage) stage._gen++;
+    $('#stage-value').innerHTML = '';
+    stage = new NumericText('#stage-value', apiOptions(state));
+    stage._primed = false;
+    lastStageSetAt = 0; // fresh instance's own _lastSetTime also starts at 0 — keep the readout in sync
+    stage.set(state.value);
+    stage._primed = true;
+    $('#stage-value').className = 'font-' + state.font;
+    $('#meta-type').textContent = state.type;
+    syncNumField();
+    requestAnimationFrame(() => stageEl.classList.remove('rebuilding'));
+    applyConfigureAll();
+  }, 90);
+}
+
+function applyConfigureAll(){
+  const opts = configureOnly(state);
+  const ambientOpts = { ...opts, ...reducedMotionConfig() };
+  if (stage) stage.configure(opts);
+  // ticker/board loop autonomously (not user-initiated per tick), so they also damp
+  // motion under prefers-reduced-motion — the Stage still follows the rail exactly,
+  // since its animations are always a direct response to a user action.
+  if (ticker) ticker.configure(ambientOpts);
+  if (board) board.configure(ambientOpts);
+}
+
+/* ───────────────────────── value composer ───────────────────────── */
+const numInput = $('#numInput'), strInput = $('#strInput');
+const composerNum = $('#composer-num'), composerStr = $('#composer-str');
+const strChips = $('#strChips'), scrub = $('#scrub'), scrubHandle = $('#scrubHandle'), scrubHint = $('#scrubHint');
+
+function syncNumField(){
+  if (state.type === 'string'){ strInput.value = state.value; scrub.removeAttribute('aria-valuenow'); return; }
+  numInput.value = state.type === 'decimal' ? (+state.value).toFixed(state.decimals) : Math.round(+state.value);
+  scrub.setAttribute('aria-valuenow', numInput.value);
+}
+
+function commitNum(v){
+  if (state.type === 'decimal') v = +(+v).toFixed(state.decimals);
+  else v = Math.round(+v) || 0;
+  setStageValue(v);
+}
+
+numInput.addEventListener('change', () => { const v = parseFloat(numInput.value); if (!isNaN(v)) commitNum(v); else syncNumField(); });
+$('#numUp').onclick = () => commitNum(+state.value + (state.type === 'decimal' ? Math.pow(10,-state.decimals) : 1));
+$('#numDown').onclick = () => commitNum(+state.value - (state.type === 'decimal' ? Math.pow(10,-state.decimals) : 1));
+$('#numRandom').onclick = () => {
+  if (state.type === 'decimal') commitNum(Math.random() * 9999);
+  else commitNum(Math.floor(Math.random() * (Math.random() < .3 ? 9 : Math.random() < .6 ? 9999 : 9999999)));
+};
+
+const strRandomPool = ['東京駅','新宿駅','渋谷スクランブル','品川','上野','横浜','Hello, world','Signal Lab','🚀 Liftoff','v0.2.0'];
+strInput.addEventListener('input', rafThrottle(() => setStageValue(strInput.value || ' ')));
+$('#strRandom').onclick = () => setStageValue(strRandomPool[Math.floor(Math.random()*strRandomPool.length)]);
+strChips.addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) setStageValue(b.dataset.v); });
+
+/* scrub rail: non-linear drag → set(), bounded snap-back handle */
+let dragStartX = null, dragStartValue = null;
+scrub.addEventListener('pointerdown', e => {
+  if (state.type === 'string') return;
+  dragStartX = e.clientX; dragStartValue = +state.value;
+  scrub.classList.add('dragging'); scrub.setPointerCapture(e.pointerId);
+  scrubHint.style.opacity = '0';
+});
+const onScrubMove = rafThrottle(dx => {
+  const pxScale = state.type === 'decimal' ? 0.0025 : 0.55;
+  const delta = Math.sign(dx) * Math.pow(Math.abs(dx), 1.55) * pxScale;
+  commitNum(dragStartValue + delta);
+  scrubHandle.style.left = (50 + clamp(dx, -120, 120) / 3) + '%';
+});
+scrub.addEventListener('pointermove', e => {
+  if (dragStartX == null) return;
+  onScrubMove(e.clientX - dragStartX);
+});
+function endScrub(){
+  if (dragStartX == null) return;
+  dragStartX = null; scrub.classList.remove('dragging');
+  scrubHandle.style.left = '50%'; scrubHint.style.opacity = '';
+}
+scrub.addEventListener('pointerup', endScrub);
+scrub.addEventListener('pointercancel', endScrub);
+scrub.addEventListener('pointerleave', () => { if (dragStartX != null) endScrub(); });
+
+scrub.addEventListener('keydown', e => {
+  if (state.type === 'string') return;
+  const step = state.type === 'decimal' ? Math.pow(10,-state.decimals) : 1;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { commitNum(+state.value + step); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { commitNum(+state.value - step); e.preventDefault(); }
+  else if (e.key === 'PageUp') { commitNum(+state.value + step*10); e.preventDefault(); }
+  else if (e.key === 'PageDown') { commitNum(+state.value - step*10); e.preventDefault(); }
+});
+
+function refreshComposerForType(){
+  const isStr = state.type === 'string';
+  composerNum.style.display = isStr ? 'none' : 'flex';
+  composerStr.style.display = isStr ? 'flex' : 'none';
+  strChips.style.display = isStr ? 'flex' : 'none';
+  scrub.style.opacity = isStr ? '.35' : '';
+  scrub.style.cursor = isStr ? 'default' : 'ew-resize';
+  scrub.setAttribute('aria-disabled', String(isStr));
+  scrub.tabIndex = isStr ? -1 : 0;
+  scrubHint.textContent = isStr ? 'scrub disabled for strings — type or pick a chip' : '← drag to scrub → (or use arrow keys)';
+}
+
+/* ───────────────────────── control rail wiring ──────────────────── */
+function segmented(id, onChange){
+  const el = $(id);
+  $$('button', el).forEach(x => x.setAttribute('aria-pressed', x.classList.contains('on') ? 'true' : 'false'));
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $$('button', el).forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    onChange(b.dataset.v);
   });
+}
 
-  nt.set(2980);   // first call — no animation
-  nt.set(14800);  // animated
-&lt;/script&gt;</pre>
-      <pre>&lt;!-- data attributes: auto-init --&gt;
-&lt;span data-nt="integer" data-nt-pre="¥"&gt;2980&lt;/span&gt;
-&lt;script type="module"&gt;
-  import NumericText from '...';
-  NumericText.autoInit('[data-nt]');
-&lt;/script&gt;</pre>
-      <pre>// MutationObserver — animate on any textContent change
-NumericText.observe('#counter', { bounce: true });
-document.querySelector('#counter').textContent = '14800'; // → animated</pre>
-    </div>
-  </details>
+segmented('#seg-type', v => {
+  state.type = v;
+  if (v === 'string' && typeof state.value !== 'string') state.value = '東京駅';
+  if (v !== 'string' && typeof state.value === 'string') state.value = 128;
+  if (v === 'decimal' && Number.isInteger(state.value)) state.value = 3.14159;
+  $('#row-decimals').classList.toggle('disabled', v !== 'decimal');
+  refreshComposerForType();
+  rebuildStage();
+  renderCode();
+});
 
-  <script type="module">
-    import NumericText from '../src/index.js';
+segmented('#seg-font', v => { state.font = v; $('#stage-value').className = 'font-' + v; });
 
-    let gBounce = true;
+function boundSlider(id, key, {fmt=(v)=>v, onCommit} = {}){
+  const el = $(id), out = $('#out-' + key.toLowerCase());
+  const write = v => { out.textContent = fmt(v); };
+  write(el.value);
+  el.addEventListener('input', () => {
+    const v = +el.value;
+    state[key] = v;
+    write(v);
+    applyConfigureAll();
+    renderCode();
+    if (onCommit) onCommit(v);
+  });
+  return { set(v){ el.value = v; write(v); } };
+}
 
-    window.setMode = (b) => {
-      gBounce = b;
-      document.getElementById('tb').classList.toggle('on', b);
-      document.getElementById('te').classList.toggle('on', !b);
-      Object.values(C).forEach(c => c.nt.configure({ bounce: b }));
-    };
+boundSlider('#in-decimals', 'decimals', { onCommit: () => rebuildStage() });
+const blurCtl     = boundSlider('#in-blur', 'blur', { fmt: v => (+v).toFixed(2) });
+const staggerCtl  = boundSlider('#in-stagger', 'stagger', { fmt: v => Math.round(v) + 'ms' });
+const durationCtl = boundSlider('#in-duration', 'duration', { fmt: v => Math.round(v) + 'ms' });
+const minDurCtl   = boundSlider('#in-mindur', 'minDuration', { fmt: v => Math.round(v) + 'ms' });
 
-    const C = {
-      1: { vals: [128, 12580], type: 'integer' },
-      2: { vals: [1111, 8888], type: 'integer', pre: '¥' },
-      3: { vals: [3.14159, 2.71828], type: 'decimal', decimals: 5 },
-      4: { vals: ['東京駅', '新宿駅'], type: 'string' },
-    };
+function boundSwitch(id, key, after){
+  const el = $(id);
+  el.checked = state[key];
+  el.addEventListener('change', () => {
+    state[key] = el.checked;
+    applyConfigureAll(); renderCode();
+    if (after) after();
+  });
+}
+boundSwitch('#in-bounce', 'bounce');
+boundSwitch('#in-fade', 'fade');
+boundSwitch('#in-adaptive', 'adaptive', () => $('#row-mindur').classList.toggle('disabled', !state.adaptive));
 
-    Object.entries(C).forEach(([id, c]) => {
-      c.nt = new NumericText(`#d${id}`, { type: c.type, decimals: c.decimals || 0, pre: c.pre || '', bounce: true });
-      c.cur = 0;
-      c.nt.set(c.vals[0]);
+function boundText(id, key){
+  const el = $(id);
+  el.addEventListener('input', () => { state[key] = el.value; });
+  el.addEventListener('change', () => rebuildStage());
+  return el;
+}
+const preEl = boundText('#in-pre', 'pre'), sufEl = boundText('#in-suf', 'suf');
+$('#in-pre').closest('.module').querySelectorAll('.chip').forEach(chip => {
+  if (chip.dataset.pre === undefined) return;
+  chip.addEventListener('click', () => {
+    state.pre = chip.dataset.pre; state.suf = chip.dataset.suf;
+    preEl.value = state.pre; sufEl.value = state.suf;
+    rebuildStage(); renderCode();
+  });
+});
+
+/* ───────────────────────── patches (presets) ────────────────────── */
+const PATCHES = [
+  { name:'Odometer', emoji:'🔢', patch:{ type:'integer', decimals:0, pre:'', suf:'', bounce:true, stagger:40, duration:400, adaptive:true, minDuration:200, blur:0.06, fade:true, value:12580 } },
+  { name:'Price Tag', emoji:'💴', patch:{ type:'integer', decimals:0, pre:'¥', suf:'', bounce:true, stagger:28, duration:340, adaptive:true, minDuration:180, blur:0.05, fade:true, value:14800 } },
+  { name:'π ⇄ e', emoji:'🥧', patch:{ type:'decimal', decimals:5, pre:'', suf:'', bounce:true, stagger:30, duration:420, adaptive:true, minDuration:200, blur:0.06, fade:true, value:3.14159 } },
+  { name:'駅名', emoji:'🚉', patch:{ type:'string', decimals:0, pre:'', suf:'', bounce:true, stagger:35, duration:420, adaptive:true, minDuration:200, blur:0.05, fade:true, value:'東京駅' } },
+  { name:'Slow-mo', emoji:'🐢', patch:{ type:'integer', decimals:0, pre:'', suf:'', bounce:true, stagger:120, duration:1200, adaptive:false, minDuration:200, blur:0.1, fade:true, value:8888 } },
+  { name:'Snappy', emoji:'⚡', patch:{ type:'integer', decimals:0, pre:'', suf:'', bounce:false, stagger:8, duration:180, adaptive:true, minDuration:100, blur:0, fade:true, value:42 } },
+  { name:'Max Blur', emoji:'💨', patch:{ type:'integer', decimals:0, pre:'', suf:'', bounce:true, stagger:40, duration:500, adaptive:true, minDuration:200, blur:0.18, fade:true, value:9700 } },
+  { name:'No Frills', emoji:'⬜', patch:{ type:'integer', decimals:0, pre:'', suf:'', bounce:false, stagger:0, duration:300, adaptive:true, minDuration:200, blur:0, fade:false, value:1000 } },
+];
+
+function tween(from, to, ms, onFrame, onDone){
+  const t0 = performance.now();
+  function step(now){
+    const p = clamp((now - t0) / ms, 0, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    onFrame(from + (to - from) * e);
+    if (p < 1) requestAnimationFrame(step); else onDone && onDone();
+  }
+  requestAnimationFrame(step);
+}
+
+function applyPatch(patch){
+  const from = { stagger:state.stagger, duration:state.duration, minDuration:state.minDuration, blur:state.blur };
+  const to = { stagger:patch.stagger, duration:patch.duration, minDuration:patch.minDuration, blur:patch.blur };
+  const ms = prefersReducedMotion.matches ? 1 : 420;
+  tween(0, 1, ms, p => {
+    staggerCtl.set(from.stagger + (to.stagger-from.stagger)*p);
+    durationCtl.set(from.duration + (to.duration-from.duration)*p);
+    minDurCtl.set(from.minDuration + (to.minDuration-from.minDuration)*p);
+    blurCtl.set(from.blur + (to.blur-from.blur)*p);
+  }, () => {
+    Object.assign(state, patch);
+    $('#in-bounce').checked = state.bounce;
+    $('#in-fade').checked = state.fade;
+    $('#in-adaptive').checked = state.adaptive;
+    $('#row-mindur').classList.toggle('disabled', !state.adaptive);
+    $('#row-decimals').classList.toggle('disabled', state.type !== 'decimal');
+    $('#in-decimals').value = state.decimals; $('#out-decimals').textContent = state.decimals;
+    preEl.value = state.pre; sufEl.value = state.suf;
+    $$('#seg-type button').forEach(b => { b.classList.toggle('on', b.dataset.v === state.type); b.setAttribute('aria-pressed', b.dataset.v === state.type ? 'true' : 'false'); });
+    refreshComposerForType();
+    rebuildStage();
+    renderCode();
+  });
+}
+const patchesEl = $('#patches');
+PATCHES.forEach(p => {
+  const b = document.createElement('button');
+  b.className = 'patch';
+  b.innerHTML = `<span class="emoji">${p.emoji}</span>${p.name}`;
+  b.onclick = () => applyPatch(p.patch);
+  patchesEl.appendChild(b);
+});
+
+/* ───────────────────────── live code panel ──────────────────────── */
+function jsLit(v){
+  if (typeof v === 'string') return `'${v.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}'`;
+  return String(v);
+}
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function highlightJS(code){
+  const re = /(\/\/.*$)|('(?:[^'\\]|\\.)*')|(\b\d+\.?\d*\b)|(\b(?:new|const|let|import|from|default)\b)|([a-zA-Z_$][\w$]*)(?=\s*:)/gm;
+  let out = '', last = 0, m;
+  while ((m = re.exec(code))) {
+    out += escapeHtml(code.slice(last, m.index));
+    const [full, comment, str, num, kw, prop] = m;
+    if (comment) out += `<span class="tok-com">${escapeHtml(comment)}</span>`;
+    else if (str) out += `<span class="tok-str">${escapeHtml(str)}</span>`;
+    else if (num) out += `<span class="tok-num">${escapeHtml(num)}</span>`;
+    else if (kw) out += `<span class="tok-kw">${escapeHtml(kw)}</span>`;
+    else if (prop) out += `<span class="tok-prop">${escapeHtml(prop)}</span>`;
+    last = re.lastIndex;
+  }
+  out += escapeHtml(code.slice(last));
+  return out;
+}
+function highlightMarkup(escaped){
+  return escaped
+    .replace(/(&lt;\/?[a-zA-Z0-9-]+)/g, '<span class="tok-kw">$1</span>')
+    .replace(/([\w-]+)(=)(&quot;[^&]*?&quot;)/g, '<span class="tok-prop">$1</span><span class="tok-punc">$2</span><span class="tok-str">$3</span>')
+    .replace(/(&gt;)/g, '<span class="tok-kw">$1</span>');
+}
+
+function genModuleCode(s){
+  const opts = [`type: ${jsLit(s.type)}`];
+  if (s.type === 'decimal') opts.push(`decimals: ${s.decimals}`);
+  opts.push(`bounce: ${s.bounce}`, `stagger: ${s.stagger}`, `duration: ${s.duration}`);
+  if (!s.adaptive) opts.push(`adaptive: false`);
+  else if (s.minDuration !== 200) opts.push(`minDuration: ${s.minDuration}`);
+  if (s.blur !== 0.06) opts.push(`blur: ${s.blur}`);
+  if (!s.fade) opts.push(`fade: false`);
+  if (s.pre) opts.push(`pre: ${jsLit(s.pre)}`);
+  if (s.suf) opts.push(`suf: ${jsLit(s.suf)}`);
+  return `import NumericText from 'numeric-text-animation';\n\n` +
+`const nt = new NumericText('#el', {\n  ${opts.join(',\n  ')},\n});\n\n` +
+`nt.set(${jsLit(s.value)});  // first call — instant\n` +
+`nt.set(${jsLit(typeof s.value === 'number' ? s.value + 1 : s.value)});  // animated, always interruptible`;
+}
+function genAttrsCode(s){
+  const esc = v => escapeHtml(String(v)).replace(/"/g,'&quot;');
+  const attrs = [`data-nt="${s.type}"`];
+  if (s.type === 'decimal') attrs.push(`data-nt-decimals="${s.decimals}"`);
+  attrs.push(`data-nt-bounce="${s.bounce}"`, `data-nt-stagger="${s.stagger}"`, `data-nt-duration="${s.duration}"`);
+  if (!s.adaptive) attrs.push(`data-nt-adaptive="false"`);
+  else if (s.minDuration !== 200) attrs.push(`data-nt-min-duration="${s.minDuration}"`);
+  if (s.blur !== 0.06) attrs.push(`data-nt-blur="${s.blur}"`);
+  if (!s.fade) attrs.push(`data-nt-fade="false"`);
+  if (s.pre) attrs.push(`data-nt-pre="${esc(s.pre)}"`);
+  if (s.suf) attrs.push(`data-nt-suf="${esc(s.suf)}"`);
+  return `<span ${attrs.join(' ')}>${esc(s.value)}</span>\n\n<script type="module">\n  import NumericText from 'numeric-text-animation';\n  NumericText.autoInit('[data-nt]');\n<\/script>`;
+}
+function genObserverCode(s){
+  return `import NumericText from 'numeric-text-animation';\n\n` +
+`NumericText.observe('#counter', {\n  bounce: ${s.bounce}, duration: ${s.duration},\n});\n\n` +
+`// any external write is intercepted and animated:\n` +
+`document.querySelector('#counter').textContent = ${jsLit(typeof s.value === 'number' ? s.value : s.value)};`;
+}
+
+let activeTab = 'module', prevLines = [];
+function renderCode(){
+  const gen = activeTab === 'module' ? genModuleCode : activeTab === 'attrs' ? genAttrsCode : genObserverCode;
+  const src = gen(state);
+  const lines = src.split('\n');
+  const html = lines.map((line, i) => {
+    const inner = activeTab === 'attrs' ? highlightMarkup(escapeHtml(line)) : highlightJS(line);
+    const changed = prevLines[i] !== undefined && prevLines[i] !== line;
+    return `<span class="ln${changed ? ' flash':''}">${inner || '&nbsp;'}</span>`;
+  }).join('');
+  $('#codeOut').innerHTML = html;
+  prevLines = lines;
+  setTimeout(() => $$('.ln.flash').forEach(l => l.classList.remove('flash')), 550);
+}
+$$('.tabs button[data-tab]').forEach(b => b.addEventListener('click', () => {
+  $$('.tabs button[data-tab]').forEach(x => x.classList.toggle('on', x === b));
+  activeTab = b.dataset.tab; prevLines = []; renderCode();
+}));
+
+$('#btnCopy').addEventListener('click', async () => {
+  const text = $('#codeOut').innerText;
+  try { await navigator.clipboard.writeText(text); flashCopied($('#btnCopy')); } catch(_) {}
+});
+function flashCopied(btn){
+  const orig = btn.textContent; btn.textContent = '✓ Copied'; btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1400);
+}
+
+/* ───────────────────────── shareable URL state ──────────────────── */
+const SHARE_KEYS = ['type','decimals','pre','suf','bounce','stagger','duration','adaptive','minDuration','blur','fade','value','font'];
+$('#btnShare').addEventListener('click', async () => {
+  const q = new URLSearchParams();
+  SHARE_KEYS.forEach(k => q.set(k, state[k]));
+  const url = location.origin + location.pathname + '?' + q.toString();
+  history.replaceState(null, '', '?' + q.toString());
+  try { await navigator.clipboard.writeText(url); flashCopied($('#btnShare')); } catch(_) {}
+});
+function loadFromURL(){
+  const q = new URLSearchParams(location.search);
+  if (![...q.keys()].length) return;
+  const num = k => q.has(k) ? +q.get(k) : undefined;
+  const bool = k => q.has(k) ? q.get(k) === 'true' : undefined;
+  if (q.has('type')) state.type = q.get('type');
+  if (num('decimals') !== undefined) state.decimals = num('decimals');
+  if (q.has('pre')) state.pre = q.get('pre');
+  if (q.has('suf')) state.suf = q.get('suf');
+  if (bool('bounce') !== undefined) state.bounce = bool('bounce');
+  if (num('stagger') !== undefined) state.stagger = num('stagger');
+  if (num('duration') !== undefined) state.duration = num('duration');
+  if (bool('adaptive') !== undefined) state.adaptive = bool('adaptive');
+  if (num('minDuration') !== undefined) state.minDuration = num('minDuration');
+  if (num('blur') !== undefined) state.blur = num('blur');
+  if (bool('fade') !== undefined) state.fade = bool('fade');
+  if (q.has('font')) state.font = q.get('font');
+  if (q.has('value')) state.value = state.type === 'string' ? q.get('value') : +q.get('value');
+}
+
+/* ───────────────────────── monitor wall: ticker ─────────────────── */
+let ticker = null, tickerTimer = null, tickerPaused = false, tickerHistory = [];
+function reducedMotionConfig(){
+  return prefersReducedMotion.matches ? { duration:1, minDuration:1, blur:0, bounce:false, stagger:0 } : {};
+}
+function startTicker(){
+  ticker = new NumericText('#ticker-nt', { ...configureOnly(state), ...reducedMotionConfig(), type:'decimal', decimals:2, pre:'$' });
+  let v = 128.4;
+  ticker.set(v);
+  tickerHistory = [v];
+  const spark = $('#spark'), ctx = spark.getContext('2d');
+  spark.setAttribute('role', 'img');
+  function drawSpark(){
+    const w = spark.width, h = spark.height, buf = tickerHistory.slice(-40);
+    ctx.clearRect(0,0,w,h);
+    if (buf.length < 2) return;
+    const min = Math.min(...buf), max = Math.max(...buf), span = (max-min) || 1;
+    ctx.beginPath();
+    buf.forEach((val,i) => {
+      const x = (i/(buf.length-1)) * w, y = h - ((val-min)/span) * (h-6) - 3;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     });
+    const rising = buf[buf.length-1] >= buf[0];
+    ctx.strokeStyle = rising ? '#30d158' : '#ff453a';
+    ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.stroke();
+    spark.setAttribute('aria-label', `Price trend over the last ${buf.length} updates: ${rising ? 'rising' : 'falling'}, from $${buf[0].toFixed(2)} to $${buf[buf.length-1].toFixed(2)}`);
+  }
+  function tick(){
+    if (tickerPaused || document.hidden){ scheduleNext(); return; }
+    const prevV = v;
+    v = Math.max(1, v + (Math.random()-0.5) * v * 0.018);
+    v = +v.toFixed(2);
+    ticker.set(v);
+    tickerHistory.push(v);
+    const arrow = $('#tickerArrow');
+    arrow.textContent = v >= prevV ? '▲' : '▼';
+    arrow.className = 'ticker-arrow ' + (v >= prevV ? 'up' : 'down');
+    drawSpark();
+    scheduleNext();
+  }
+  function scheduleNext(){
+    clearTimeout(tickerTimer);
+    tickerTimer = setTimeout(tick, prefersReducedMotion.matches ? 1800 : (450 + Math.random()*350));
+  }
+  scheduleNext();
+}
+$('#tickerPause').addEventListener('click', () => {
+  tickerPaused = !tickerPaused;
+  $('#tickerPause').textContent = tickerPaused ? '▶' : '⏸';
+});
 
-    window.tg = (id) => {
-      const c = C[id];
-      c.cur ^= 1;
-      const nv = c.vals[c.cur], ov = c.vals[c.cur ^ 1];
-      c.nt.set(nv);
-      const b = document.getElementById(`b${id}`);
-      if (c.type !== 'string') {
-        const up = +nv > +ov;
-        b.textContent = up ? '▲ UP' : '▼ DOWN';
-        b.className = `badge ${up ? 'up' : 'dn'} on`;
-      } else {
-        b.textContent = 'changed';
-        b.className = 'badge ch on';
-      }
-      clearTimeout(c._t);
-      c._t = setTimeout(() => b.classList.remove('on'), 1400);
-    };
-  </script>
+/* ───────────────────────── monitor wall: departure board ────────── */
+let board = null, boardTimer = null, boardPaused = false;
+const STATIONS = ['東京','新宿','渋谷','品川','上野','横浜','池袋','秋葉原'];
+function startBoard(){
+  board = new NumericText('#board-nt', { ...configureOnly(state), ...reducedMotionConfig(), type:'string' });
+  let idx = 0;
+  board.set(STATIONS[0] + '駅');
+  let eta = 4;
+  const etaHost = $('#boardEta');
+  function tickEta(){
+    if (boardPaused || document.hidden){ return; }
+    eta -= 1;
+    if (eta <= 0){
+      idx = (idx + 1) % STATIONS.length;
+      board.set(STATIONS[idx] + '駅');
+      eta = prefersReducedMotion.matches ? 8 : (3 + Math.floor(Math.random()*3));
+    }
+    etaHost.textContent = eta;
+  }
+  etaHost.textContent = eta;
+  boardTimer = setInterval(tickEta, 1000);
+}
+$('#boardPause').addEventListener('click', () => {
+  boardPaused = !boardPaused;
+  $('#boardPause').textContent = boardPaused ? '▶' : '⏸';
+});
+
+/* ───────────────────────── interruption stress ──────────────────── */
+let stressOn = false, stressTimer = null, stressCount = 0;
+const stressNT = miniNT('#stress-nt', { type:'integer' });
+stressNT.set(0);
+const stressWordsPool = ['東京駅','渋谷','LIVE','ONLINE','READY'];
+function stressTick(){
+  if (!stressOn) return;
+  const v = state.type === 'string'
+    ? stressWordsPool[Math.floor(Math.random()*stressWordsPool.length)]
+    : (state.type === 'decimal' ? +(Math.random()*9999).toFixed(state.decimals) : Math.floor(Math.random()*999999));
+  setStageValue(v);
+  stressCount++; stressNT.set(stressCount);
+  stressTimer = setTimeout(stressTick, +$('#stressSpeed').value);
+}
+$('#stressPlay').addEventListener('click', () => {
+  stressOn = !stressOn;
+  $('#stressPlay').textContent = stressOn ? '❚❚' : '▶';
+  $('#stressPlay').classList.toggle('off', !stressOn);
+  $('#stressPlay').setAttribute('aria-label', stressOn ? 'Stop stress test' : 'Start stress test');
+  if (stressOn) stressTick(); else clearTimeout(stressTimer);
+});
+$('#stressSpeed').addEventListener('input', e => { $('#stressSpeedOut').textContent = e.target.value; });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && stressOn){ clearTimeout(stressTimer); }
+  else if (!document.hidden && stressOn){ stressTick(); }
+});
+
+/* ───────────────────────── boot ─────────────────────────────────── */
+loadFromURL();
+$('#row-decimals').classList.toggle('disabled', state.type !== 'decimal');
+$('#row-mindur').classList.toggle('disabled', !state.adaptive);
+$$('#seg-type button').forEach(b => b.classList.toggle('on', b.dataset.v === state.type));
+$$('#seg-font button').forEach(b => { b.classList.toggle('on', b.dataset.v === state.font); b.setAttribute('aria-pressed', b.dataset.v === state.font ? 'true' : 'false'); });
+$('#in-decimals').value = state.decimals; $('#out-decimals').textContent = state.decimals;
+$('#in-blur').value = state.blur; $('#out-blur').textContent = state.blur.toFixed(2);
+$('#in-stagger').value = state.stagger; $('#out-stagger').textContent = state.stagger + 'ms';
+$('#in-duration').value = state.duration; $('#out-duration').textContent = state.duration + 'ms';
+$('#in-mindur').value = state.minDuration; $('#out-minduration').textContent = state.minDuration + 'ms';
+$('#in-bounce').checked = state.bounce; $('#in-fade').checked = state.fade; $('#in-adaptive').checked = state.adaptive;
+preEl.value = state.pre; sufEl.value = state.suf;
+refreshComposerForType();
+
+stage = new NumericText('#stage-value', apiOptions(state));
+stage._primed = false;
+stage.set(state.value);
+stage._primed = true;
+$('#stage-value').className = 'font-' + state.font;
+$('#meta-type').textContent = state.type;
+syncNumField();
+renderCode();
+
+startTicker();
+startBoard();
+
+Object.defineProperty(window, '_lab', {
+  configurable:true,
+  get(){ return { state, stage, ticker, board }; },
+});
+</script>
 </body>
-
 </html>
