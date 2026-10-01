@@ -12,7 +12,7 @@ await Promise.all([
   esbuild.build({ ...shared, format: 'esm', outfile: 'dist/numeric-text-animation.js' }),
   // CJS (require 用)
   esbuild.build({ ...shared, format: 'cjs', outfile: 'dist/numeric-text-animation.cjs' }),
-  // ブラウザ向け minified UMD (CDN / script タグ用)
+  // ブラウザ向け minified IIFE (CDN / script タグ用)
   esbuild.build({
     ...shared,
     format: 'iife',
